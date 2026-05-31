@@ -1,0 +1,70 @@
+{
+  "homepage.meta.description": {
+    "message": "Open-source workflow orchestrator for z/OS mainframe and modern DevOps",
+    "description": "Homepage meta description"
+  },
+  "homepage.cta.start": {
+    "message": "Get started →",
+    "description": "Primary CTA button on homepage"
+  },
+  "homepage.cta.tasks": {
+    "message": "16 built-in tasks",
+    "description": "Secondary CTA button on homepage"
+  },
+  "homepage.features.sectionLabel": {
+    "message": "Why automate4z?",
+    "description": "Section label above the features heading"
+  },
+  "homepage.features.sectionHeading": {
+    "message": "Everything you need for mainframe DevOps",
+    "description": "Main heading of the features section"
+  },
+  "homepage.feature.binary.title": {
+    "message": "One binary, two worlds",
+    "description": "Feature card title"
+  },
+  "homepage.feature.binary.description": {
+    "message": "A single binary {a4z} orchestrates local tasks (shell, HTTP, filesystem) and z/OS tasks (JCL jobs, datasets, copybooks) in the same workflow YAML — no runtime to install.",
+    "description": "Feature card description"
+  },
+  "homepage.feature.declarative.title": {
+    "message": "Declarative workflows",
+    "description": "Feature card title"
+  },
+  "homepage.feature.declarative.description": {
+    "message": "YAML syntax inspired by GitHub Actions, adapted for the mainframe. Automatic DAG, {expr} expressions, typed inputs, {needs}, {if_}, {timeout} — fine-grained control of every step.",
+    "description": "Feature card description"
+  },
+  "homepage.feature.tasks.title": {
+    "message": "16 built-in tasks",
+    "description": "Feature card title"
+  },
+  "homepage.feature.tasks.description": {
+    "message": "Shell, HTTP, fs, archive, wait, notify, git, assert, json-query, yaml-query, template, convert, {zosjobs}, {zosdatasets}, {zdeps} — all included, no external dependencies.",
+    "description": "Feature card description"
+  },
+  "homepage.feature.lint.title": {
+    "message": "Lint & Plan",
+    "description": "Feature card title"
+  },
+  "homepage.feature.lint.description": {
+    "message": "{lint} validates the YAML and detects cycles. {plan} shows the parallel execution levels. Zero surprises in production.",
+    "description": "Feature card description"
+  },
+  "homepage.feature.security.title": {
+    "message": "Native security",
+    "description": "Feature card title"
+  },
+  "homepage.feature.security.description": {
+    "message": "Secrets never in the YAML — {secret} variables automatically masked in logs and run artifacts. Zowe profile compatibility.",
+    "description": "Feature card description"
+  },
+  "homepage.feature.crossplatform.title": {
+    "message": "Cross-platform",
+    "description": "Feature card title"
+  },
+  "homepage.feature.crossplatform.description": {
+    "message": "Linux, macOS, Windows × amd64 / arm64. Run artifacts stored under {runs}. Automatic rotation. Machine-readable JSON output.",
+    "description": "Feature card description"
+  }
+}

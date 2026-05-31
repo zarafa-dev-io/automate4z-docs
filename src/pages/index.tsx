@@ -5,6 +5,7 @@ import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import HomepageFeatures from '@site/src/components/HomepageFeatures';
 import Heading from '@theme/Heading';
+import Translate, {translate} from '@docusaurus/Translate';
 
 import styles from './index.module.css';
 
@@ -48,12 +49,12 @@ function HomepageHeader() {
               <Link
                 className="button button--primary button--lg"
                 to="/docs/getting-started">
-                Démarrer →
+                <Translate id="homepage.cta.start">Démarrer →</Translate>
               </Link>
               <Link
                 className="button button--outline button--secondary button--lg"
                 to="/docs/task-reference/overview">
-                16 tâches built-in
+                <Translate id="homepage.cta.tasks">16 tâches built-in</Translate>
               </Link>
             </div>
           </div>
@@ -80,7 +81,7 @@ export default function Home(): ReactNode {
   return (
     <Layout
       title={siteConfig.title}
-      description="Orchestrateur de workflows open-source pour z/OS et DevOps modernes">
+      description={translate({id: 'homepage.meta.description', message: 'Orchestrateur de workflows open-source pour z/OS et DevOps modernes'})}>
       <HomepageHeader />
       <main>
         <HomepageFeatures />
