@@ -1,30 +1,279 @@
-/**
- * Any CSS included here will be global. The classic template
- * bundles Infima by default. Infima is a CSS framework designed to
- * work well for content-centric websites.
- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
-/* You can override the default Infima variables here. */
+/* ─── Light mode ──────────────────────────────────────────────────── */
 :root {
-  --ifm-color-primary: #2e8555;
-  --ifm-color-primary-dark: #29784c;
-  --ifm-color-primary-darker: #277148;
-  --ifm-color-primary-darkest: #205d3b;
-  --ifm-color-primary-light: #33925d;
-  --ifm-color-primary-lighter: #359962;
-  --ifm-color-primary-lightest: #3cad6e;
-  --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-color-primary: #7c3aed;
+  --ifm-color-primary-dark: #6d28d9;
+  --ifm-color-primary-darker: #5b21b6;
+  --ifm-color-primary-darkest: #4c1d95;
+  --ifm-color-primary-light: #8b5cf6;
+  --ifm-color-primary-lighter: #a78bfa;
+  --ifm-color-primary-lightest: #c4b5fd;
+
+  --ifm-font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  --ifm-code-font-size: 88%;
+  --ifm-navbar-height: 64px;
+  --ifm-border-radius: 8px;
+  --ifm-global-radius: 8px;
+
+  --docusaurus-highlighted-code-line-bg: rgba(124, 58, 237, 0.08);
 }
 
-/* For readability concerns, you should choose a lighter palette in dark mode. */
+/* ─── Dark mode ───────────────────────────────────────────────────── */
 [data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  --ifm-color-primary: #a78bfa;
+  --ifm-color-primary-dark: #8b5cf6;
+  --ifm-color-primary-darker: #7c3aed;
+  --ifm-color-primary-darkest: #6d28d9;
+  --ifm-color-primary-light: #c4b5fd;
+  --ifm-color-primary-lighter: #ddd6fe;
+  --ifm-color-primary-lightest: #ede9fe;
+
+  --ifm-background-color: #0c0c15;
+  --ifm-background-surface-color: #12121e;
+  --ifm-navbar-background-color: #08080f;
+  --ifm-footer-background-color: #08080f;
+
+  --ifm-font-color-base: #d4d4e8;
+  --ifm-heading-color: #f0f0ff;
+  --ifm-link-color: #a78bfa;
+  --ifm-link-hover-color: #c4b5fd;
+
+  --ifm-toc-border-color: #1e1e30;
+  --ifm-color-emphasis-200: #1a1a2e;
+  --ifm-color-emphasis-300: #22223a;
+  --ifm-color-emphasis-600: #6b6b9a;
+
+  --ifm-code-background: #1a1a2e;
+  --docusaurus-highlighted-code-line-bg: rgba(167, 139, 250, 0.12);
+
+  /* Sidebar */
+  --ifm-menu-color: #b8b8d4;
+  --ifm-menu-color-active: #c4b5fd;
+  --ifm-menu-color-background-active: rgba(167, 139, 250, 0.12);
+  --ifm-menu-color-background-hover: rgba(255, 255, 255, 0.04);
+}
+
+/* ─── Global ──────────────────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Navbar ──────────────────────────────────────────────────────── */
+.navbar {
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  box-shadow: none;
+}
+
+[data-theme='dark'] .navbar {
+  border-bottom-color: #1a1a2e;
+}
+
+.navbar__brand {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.navbar__title {
+  font-size: 1.1rem;
+  background: linear-gradient(135deg, #a78bfa, #818cf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Sidebar ─────────────────────────────────────────────────────── */
+[data-theme='dark'] .theme-doc-sidebar-container {
+  border-right-color: #1a1a2e;
+}
+
+.menu__link {
+  border-radius: 6px;
+  font-size: 0.875rem;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.menu__link--active {
+  font-weight: 600;
+}
+
+.menu__caret::before {
+  transition: transform 0.2s ease;
+}
+
+/* ─── Headings ────────────────────────────────────────────────────── */
+h1, h2, h3, h4 {
+  letter-spacing: -0.02em;
+}
+
+article h1 {
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+article h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+article h2:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* ─── Code blocks ─────────────────────────────────────────────────── */
+[data-theme='dark'] pre {
+  border: 1px solid #1e1e30;
+}
+
+code {
+  border-radius: 4px;
+  font-size: 0.86em;
+  padding: 0.15em 0.4em;
+}
+
+[data-theme='dark'] code {
+  background: #1a1a2e;
+  color: #c4b5fd;
+  border: 1px solid #2a2a3e;
+}
+
+.prism-code {
+  font-size: 0.875rem !important;
+  line-height: 1.65 !important;
+}
+
+/* ─── Tables ──────────────────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 0.875rem;
+}
+
+thead tr {
+  background: var(--ifm-color-emphasis-200);
+}
+
+[data-theme='dark'] thead tr {
+  background: #1a1a2e;
+}
+
+th {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  color: var(--ifm-color-emphasis-600);
+}
+
+[data-theme='dark'] th {
+  color: #8888aa;
+}
+
+tbody tr:nth-child(odd) {
+  background: transparent;
+}
+
+[data-theme='dark'] tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+td, th {
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  padding: 0.6rem 0.9rem;
+}
+
+[data-theme='dark'] td, [data-theme='dark'] th {
+  border-color: #1e1e30;
+}
+
+/* ─── Admonitions ─────────────────────────────────────────────────── */
+.alert {
+  border-radius: 8px;
+  border-left-width: 3px;
+}
+
+[data-theme='dark'] .alert {
+  background: rgba(167, 139, 250, 0.06);
+}
+
+[data-theme='dark'] .alert--info {
+  background: rgba(96, 165, 250, 0.06);
+  border-left-color: #60a5fa;
+}
+
+[data-theme='dark'] .alert--warning {
+  background: rgba(251, 191, 36, 0.06);
+  border-left-color: #fbbf24;
+}
+
+[data-theme='dark'] .alert--danger {
+  background: rgba(248, 113, 113, 0.06);
+  border-left-color: #f87171;
+}
+
+[data-theme='dark'] .alert--success {
+  background: rgba(52, 211, 153, 0.06);
+  border-left-color: #34d399;
+}
+
+/* ─── TOC ─────────────────────────────────────────────────────────── */
+.table-of-contents__link {
+  font-size: 0.82rem;
+  transition: color 0.15s ease;
+}
+
+[data-theme='dark'] .table-of-contents__link {
+  color: #7070a0;
+}
+
+[data-theme='dark'] .table-of-contents__link:hover,
+[data-theme='dark'] .table-of-contents__link--active {
+  color: #a78bfa;
+}
+
+/* ─── Pagination ──────────────────────────────────────────────────── */
+.pagination-nav__link {
+  border-radius: 8px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  transition: border-color 0.2s ease;
+}
+
+.pagination-nav__link:hover {
+  border-color: var(--ifm-color-primary);
+}
+
+/* ─── Footer ──────────────────────────────────────────────────────── */
+.footer {
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+[data-theme='dark'] .footer {
+  border-top-color: #1a1a2e;
+}
+
+/* ─── Badges ──────────────────────────────────────────────────────── */
+.badge--primary {
+  background: rgba(124, 58, 237, 0.15);
+  color: #8b5cf6;
+  border: 1px solid rgba(124, 58, 237, 0.3);
+}
+
+[data-theme='dark'] .badge--primary {
+  background: rgba(167, 139, 250, 0.12);
+  color: #a78bfa;
+  border-color: rgba(167, 139, 250, 0.25);
 }
