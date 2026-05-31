@@ -1,0 +1,123 @@
+---
+sidebar_position: 1
+title: Workflow structure
+---
+
+# Workflow structure
+
+A workflow is a single YAML document. Its root is an object with the following fields:
+
+```yaml
+apiVersion: automate4z/v1     # required
+kind: Workflow                # required
+name: build-cobol-module      # required
+description: |                # optional
+  Compile, link, and run unit tests for a COBOL module.
+
+a4z:
+  version: '>=1.0 <2'         # optional — runtime version constraint
+
+inputs:                       # optional
+  module:
+    type: string
+    required: true
+
+env:                          # optional — global env vars
+  TZ: Europe/Paris
+
+defaults:                     # optional — step default values
+  zos-jobs:
+    lpar: dev01
+
+steps:                        # required, ≥ 1 step
+  - id: hello
+    uses: shell
+    with:
+      run: echo "Hello ${{ inputs.module }}"
+
+outputs:                      # optional — workflow outputs
+  status:
+    value: ${{ steps.hello.outputs.exitCode }}
+```
+
+## Root fields
+
+| Field | Type | Required | Version | Description |
+|-------|------|----------|---------|-------------|
+| `apiVersion` | string | yes | v1.0 | Must be `automate4z/v1`. |
+| `kind` | string | yes | v1.0 | Must be `Workflow`. |
+| `name` | string | yes | v1.0 | Regex `^[a-z][a-z0-9-]{0,62}[a-z0-9]$`. |
+| `description` | string | no | v1.0 | Free-form description, markdown allowed. |
+| `a4z` | object | no | v1.0 | Runtime constraints. |
+| `inputs` | object | no | v1.0 | Typed input parameters. |
+| `env` | object | no | v1.0 | Environment variables injected into all steps. |
+| `defaults` | object | no | v1.0 | Default values for steps. |
+| `steps` | array | yes | v1.0 | At least one step. |
+| `outputs` | object | no | v1.0 | Values exposed as workflow output. |
+| `secrets` | object | no | v1.x | Declaration of required secrets. |
+| `matrix` | object | no | v1.x | Parameterized multi-value execution. |
+| `concurrency` | object | no | v1.x | Concurrency control between runs. |
+| `triggers` | object | no | v2 | Triggers (cron, webhook…). Reserved. |
+
+Any unlisted field must be rejected by the linter in strict mode.
+
+## `a4z` block
+
+```yaml
+a4z:
+  version: '>=1.0 <2'
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | string | SemVer constraint on the runtime. If not satisfied, the runtime refuses to execute. |
+
+## `defaults` block
+
+Factors out common `with` values per task type:
+
+```yaml
+defaults:
+  zos-jobs:
+    lpar: dev01
+    expectRC: 0
+  zos-datasets:
+    lpar: dev01
+
+steps:
+  - id: compile
+    uses: zos-jobs
+    with:
+      jcl: ./compile.jcl
+      # lpar and expectRC inherited from defaults
+```
+
+**Precedence:** step `with` > workflow `defaults` > task built-in default.
+
+:::note
+A `defaults.zos` alias (v1.x) will allow targeting all `zos-*` tasks at once.
+:::
+
+## Validation and lint
+
+`a4z lint <file>` checks:
+
+1. Valid YAML syntax
+2. JSON Schema conformance
+3. Unique step `id`s
+4. No cycles in `needs`
+5. Valid references in expressions
+6. `with` validity against each task's schema
+7. Security heuristics (secrets in plain text)
+
+Available modes:
+- `--strict`: all warnings become errors
+- `--explain`: detailed output with the resolved DAG
+
+## Compatibility and evolution
+
+Starting from `a4z 1.0.0`:
+
+- Any workflow valid in `v1.0` remains executable without modification through `2.0.0`
+- v1.x field additions are optional
+- Any deprecated syntax emits a warning for at least one minor version before removal

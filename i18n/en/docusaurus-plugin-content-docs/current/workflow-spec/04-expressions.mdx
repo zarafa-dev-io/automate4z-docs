@@ -1,0 +1,137 @@
+---
+sidebar_position: 4
+title: Expressions
+---
+
+# `$\{{ }}` Expressions
+
+Expressions inside `${{ }}` are evaluated by the runtime at step execution time.
+
+## Available contexts
+
+| Context | Description | Availability |
+|---------|-------------|--------------|
+| `inputs.*` | Workflow inputs | everywhere after parsing |
+| `env.*` | Environment variables (global + step) | everywhere |
+| `steps.<id>.outputs.*` | Outputs of a previous step | after step execution |
+| `steps.<id>.status` | Status of a previous step | after step execution |
+| `secrets.*` | Secrets (v1.x) | everywhere |
+| `matrix.*` | Matrix variables (v1.x) | in a matrix run |
+| `workflow.*` | Metadata (`name`, `runId`, `startedAt`) | everywhere |
+| `runner.*` | Runner info (`os`, `arch`, `cwd`) | everywhere |
+
+## Supported operators
+
+```yaml
+# Comparison
+${{ inputs.env == "prod" }}
+${{ steps.compile.outputs.exitCode != 0 }}
+${{ inputs.retries >= 3 }}
+
+# Logic
+${{ failure() && inputs.notify == true }}
+${{ inputs.skip == false || always() }}
+
+# Arithmetic
+${{ inputs.retries + 1 }}
+
+# Strings
+${{ "BUILD-" + inputs.module }}
+
+# Indexing
+${{ steps.api.outputs.body.version }}
+${{ steps.list.outputs.entries[0].name }}
+```
+
+## Built-in functions
+
+### Flow control (in `if`)
+
+| Function | Description |
+|----------|-------------|
+| `success()` | `true` if all `needs` succeeded |
+| `failure()` | `true` if at least one `needs` failed |
+| `always()` | Always `true` (forces execution even after failure) |
+| `cancelled()` | `true` if the run was cancelled |
+
+### Strings and collections
+
+| Function | Example | Description |
+|----------|---------|-------------|
+| `contains(s, sub)` | `${{ contains(inputs.module, "COBPRG") }}` | Substring test |
+| `startsWith(s, prefix)` | `${{ startsWith(inputs.module, "COB") }}` | Prefix test |
+| `endsWith(s, suffix)` | `${{ endsWith(inputs.module, "01") }}` | Suffix test |
+| `format(tpl, ...args)` | `${{ format("Build {0} on {1}", inputs.module, inputs.lpar) }}` | Formatting |
+| `join(array, sep)` | `${{ join(inputs.targets, ",") }}` | Array concatenation |
+
+### Dates and time
+
+| Function | Example | Description |
+|----------|---------|-------------|
+| `now()` | `${{ now() }}` | Current ISO 8601 timestamp (UTC) |
+| `now(format)` | `${{ now('date') }}` → `2026-05-16` | Formatted |
+| `now(format, tz)` | `${{ now('datetime', 'Europe/Paris') }}` | In a timezone |
+| `formatTime(t, fmt)` | — | Reformat a timestamp |
+| `addDuration(t, d)` | `${{ addDuration(now(), '-24h') }}` | Add/subtract a duration |
+| `parseTime(s, fmt)` | — | Parse a string to a timestamp |
+| `timestamp()` | `${{ timestamp() }}` | Unix epoch in seconds |
+
+**Format aliases**: `iso`, `rfc3339`, `date` (`2006-01-02`), `time` (`15:04:05`), `datetime` (`2006-01-02 15:04:05`).
+
+### Encoding
+
+| Function | Description |
+|----------|-------------|
+| `base64(s)` | Encode to Base64 |
+| `base64Decode(s)` | Decode from Base64 |
+| `urlEncode(s)` | URL-encode |
+| `urlDecode(s)` | URL-decode |
+| `hex(s)` | Encode to hexadecimal |
+| `hexDecode(s)` | Decode from hexadecimal |
+
+### Upcoming (v1.x)
+
+| Function | Description |
+|----------|-------------|
+| `fromJSON(s)` | Parse JSON |
+| `toJSON(v)` | Serialize to JSON |
+| `env(name)` | Access `os.Getenv` |
+| `hashFiles(...patterns)` | Hash files (for caching) |
+
+## Condition `if`
+
+```yaml
+- id: notify
+  if: ${{ failure() && inputs.notifyOnFailure == true }}
+  uses: http
+  with:
+    method: POST
+    url: https://hooks.example.com/alert
+```
+
+- If `if` is `false`, the step has status `skipped`.
+- Without `if`, the step is implicitly conditioned by `success()` on its `needs`.
+
+## Examples
+
+```yaml
+# Use an output from a previous step
+- id: report
+  needs: [compile]
+  run: echo "Job ${{ steps.compile.outputs.jobId }} returned ${{ steps.compile.outputs.rc }}"
+
+# Condition on step status
+- id: cleanup
+  if: ${{ always() }}
+  run: rm -rf ./tmp
+
+# Basic auth in Base64
+- uses: http
+  with:
+    url: https://api/secure
+    headers:
+      Authorization: Basic ${{ base64(format('%s:%s', secrets.USER, secrets.PWD)) }}
+
+# Copy with timestamp
+- run: cp build.tar.gz release-${{ now('date') }}.tar.gz
+```

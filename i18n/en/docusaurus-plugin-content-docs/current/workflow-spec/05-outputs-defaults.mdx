@@ -1,0 +1,118 @@
+---
+sidebar_position: 5
+title: Outputs and Defaults
+---
+
+# Workflow outputs
+
+```yaml
+outputs:
+  jobId:
+    description: Compilation job identifier
+    value: ${{ steps.compile.outputs.jobId }}
+  rc:
+    value: ${{ steps.compile.outputs.rc }}
+```
+
+Workflow outputs are:
+- Displayed at the end of the CLI execution
+- Exposed as job outputs in a GitHub Action
+- Consumable by a calling workflow (v1.x)
+
+---
+
+# Secrets (v1.x)
+
+## Declaration
+
+```yaml
+secrets:
+  ZOSMF_PASSWORD:
+    required: true
+    description: z/OSMF password for the target LPAR
+  SONAR_TOKEN:
+    required: false
+```
+
+## Sources (resolution order)
+
+1. Env var `A4Z_SECRET_<NAME>`
+2. Native keychain (keychain, Credential Manager, libsecret) via active profile
+3. File `~/.automate4z/secrets.yml` (local dev mode only)
+
+## Referencing
+
+```yaml
+- uses: http
+  with:
+    headers:
+      Authorization: Bearer ${{ secrets.SONAR_TOKEN }}
+```
+
+## Safeguards
+
+- `secrets.*` values are masked in logs (`***`)
+- The linter rejects any literal value that looks like a secret in the YAML
+- Secrets are never written to `.automate4z/runs/`
+
+:::note
+While waiting for v1.x, the `A4Z_SECRET_*` mechanism is available from the MVP. Any env var prefixed `A4Z_SECRET_` is automatically masked in logs.
+:::
+
+---
+
+# Matrix (v1.x)
+
+Executes the workflow with multiple combinations of variables:
+
+```yaml
+matrix:
+  os: [linux, windows]
+  module: [COBPRG01, COBPRG02, COBPRG03]
+  exclude:
+    - { os: windows, module: COBPRG03 }
+  include:
+    - { os: macos, module: COBPRG01, extra: true }
+
+steps:
+  - id: build
+    run: build.sh ${{ matrix.module }} on ${{ matrix.os }}
+```
+
+- The runtime unfolds the Cartesian product, applies `exclude`, then adds `include`
+- Each combination is an isolated run, parallel by default
+
+---
+
+# Concurrency (v1.x)
+
+```yaml
+concurrency:
+  group: build-${{ inputs.module }}
+  cancelInProgress: true
+```
+
+- Two runs with the same `group` cannot execute simultaneously on the same host
+- If `cancelInProgress: true`, a new run cancels the previous one
+- Local storage (lockfile in `.automate4z/locks/`)
+
+---
+
+# Reusable workflows (v1.x)
+
+A workflow can be referenced from another via a `uses` step pointing to a file:
+
+```yaml
+# build.yml
+steps:
+  - id: build-module
+    uses: ./workflows/build-cobol.yml
+    with:
+      module: COBPRG01
+      lpar: dev01
+```
+
+- The sub-workflow's `inputs` are passed via `with`
+- The sub-workflow's `outputs` are exposed via `steps.<id>.outputs.*`
+- Relative paths are resolved relative to the calling workflow
+- No recursion: a workflow cannot call itself

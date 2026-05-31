@@ -1,0 +1,113 @@
+---
+sidebar_position: 12
+title: template
+---
+
+# `template` — Template rendering
+
+Renders a Go (`text/template`) template enriched with Sprig functions. Useful for generating config files, parameterized JCL, reports.
+
+Default delimiters: `<<` and `>>` to avoid visual collision with `${{ }}` workflow expressions.
+
+```yaml
+- uses: template
+  with:
+    src: ./templates/compile.jcl.tmpl
+    dst: ./build/jcl/compile.jcl
+    vars:
+      MODULE: ${{ inputs.module }}
+      LIBRARY: USER.LOAD
+```
+
+## Inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `src` | string | one of the two | — | Local path to a template file. |
+| `content` | string | one of the two | — | Inline template. |
+| `dst` | string | no | — | Output path. If absent, result is in `outputs.result`. |
+| `vars` | object | no | — | Variables passed to the template. |
+| `delims` | array(2) | no | `['<<', '>>']` | Custom delimiters. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `result` | string | Rendered result, if `dst` not provided. |
+| `bytesWritten` | integer | If `dst` provided. |
+| `dst` | string | Output path (resolved). |
+
+## Available functions
+
+**Built-in `text/template`**: `if`, `else`, `range`, `with`, `printf`, comparisons (`eq`, `ne`, `lt`, etc.).
+
+**Sprig (subset)**:
+
+| Category | Functions |
+|----------|-----------|
+| Strings | `upper`, `lower`, `title`, `trim`, `replace`, `contains`, `hasPrefix`, `hasSuffix`, `quote`, `indent` |
+| Math | `add`, `sub`, `mul`, `div`, `mod`, `max`, `min` |
+| Lists | `list`, `first`, `last`, `rest`, `reverse`, `uniq`, `join`, `split` |
+| Date | `now`, `date`, `dateInZone` |
+| Default | `default`, `coalesce`, `empty` |
+| Encoding | `b64enc`, `b64dec` |
+| Crypto | `sha256sum`, `sha1sum` |
+
+## Examples
+
+**Parameterized JCL generation**
+
+File `templates/compile.jcl.tmpl`:
+
+```jcl
+//<<.JOBNAME>>  JOB (ACCT),'BUILD <<.MODULE>>',CLASS=A
+//STEP1    EXEC PGM=IGYCRCTL<<if .OPTIMIZE>>,PARM='OPT'<<end>>
+//SYSLIN   DD DSN=<<.LIBRARY>>(<<.MODULE>>),DISP=SHR
+<<range .COPYBOOKS>>//COPY    DD DSN=<<.>>,DISP=SHR
+<<end>>
+```
+
+```yaml
+- uses: template
+  with:
+    src: ./templates/compile.jcl.tmpl
+    dst: ./build/jcl/compile-${{ inputs.module }}.jcl
+    vars:
+      JOBNAME: BUILD${{ inputs.module }}
+      MODULE: ${{ inputs.module }}
+      LIBRARY: USER.LOAD
+      OPTIMIZE: ${{ inputs.optimize }}
+      COPYBOOKS:
+        - USER.COPYBOOK.COMMON
+        - USER.COPYBOOK.UTILS
+```
+
+**Inline template for a message**
+
+```yaml
+- id: render
+  uses: template
+  with:
+    content: |
+      Build report for <<.module>>
+      RC: <<.rc>>
+      Duration: <<.duration>>
+      <<if .warnings>>
+      Warnings: <<.warnings>>
+      <<end>>
+    vars:
+      module: ${{ inputs.module }}
+      rc: ${{ steps.compile.outputs.rc }}
+      duration: ${{ steps.compile.outputs.duration }}
+      warnings: ${{ steps.compile.outputs.warnings }}
+```
+
+## Common errors
+
+- **Undefined variable** — rendered as `<no value>` by default.
+- **Colliding `<<` delimiters** — rare but possible if the source template contains `<<`. Change delimiters via `delims: ['[[', ']]']`.
+
+## FAQ
+
+**Why `<<` `>>` delimiters by default?**
+Avoids visual collision with `${{ }}` workflow expressions. Go users can switch back to `{{ }}` via `delims: ['{{', '}}']`.

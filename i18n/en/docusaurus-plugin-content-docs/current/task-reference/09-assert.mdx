@@ -1,0 +1,77 @@
+---
+sidebar_position: 9
+title: assert
+---
+
+# `assert` — Condition check
+
+Checks a condition and fails the step cleanly if it is not met. Replaces unreadable, non-portable `shell: '[ $X = $Y ] || exit 1'`.
+
+```yaml
+- uses: assert
+  with:
+    condition: ${{ steps.compile.outputs.rc == 0 }}
+    message: 'Compilation failed with RC=${{ steps.compile.outputs.rc }}'
+```
+
+## Inputs
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `condition` | string or boolean | yes | Expression to evaluate. Step fails if false. |
+| `message` | string | no | Error message shown if the condition is false. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `passed` | boolean | `true` if the condition is true. |
+
+## Examples
+
+**Check a return code**
+
+```yaml
+- uses: assert
+  with:
+    condition: ${{ steps.compile.outputs.rc == 0 }}
+    message: 'Compilation failed (RC=${{ steps.compile.outputs.rc }})'
+```
+
+**Check that a file exists**
+
+```yaml
+- id: check-output
+  uses: fs
+  with:
+    action: exists
+    path: ./build/output.bin
+
+- uses: assert
+  with:
+    condition: ${{ steps.check-output.outputs.exists == true }}
+    message: 'Build output is missing'
+```
+
+**Soft assert (warning, not failure)**
+
+```yaml
+- uses: assert
+  continueOnError: true
+  with:
+    condition: ${{ steps.tests.outputs.warnings == 0 }}
+    message: 'Warning: ${{ steps.tests.outputs.warnings }} test warnings (non-blocking)'
+```
+
+## Common errors
+
+- **Mis-typed expression** — `${{ steps.X.outputs.Y == 0 }}` vs `${{ steps.X.outputs.Y == "0" }}`. Check the type returned by the step.
+- **`condition` always true** — missing `${{ }}` delimiters. `condition: steps.X.outputs.Y == 0` (without `${{ }}`) is a literal string = truthy.
+
+## FAQ
+
+**Difference from `if:`?**
+`if: false` → step is `skipped`. `assert` with a false condition → step is `failure`. Choose based on the expected semantics.
+
+**How do I make a non-blocking assert?**
+`continueOnError: true` on the step. The step stays marked `failure`, but subsequent steps still execute.

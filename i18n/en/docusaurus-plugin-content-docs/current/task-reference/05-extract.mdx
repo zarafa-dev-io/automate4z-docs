@@ -1,0 +1,79 @@
+---
+sidebar_position: 5
+title: extract
+---
+
+# `extract` — Extract archives
+
+Decompresses a local archive into a destination directory. Zip-slip protection enabled by default.
+
+```yaml
+- uses: extract
+  with:
+    src: ./deps.tar.gz
+    dst: ./vendor
+```
+
+## Inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `src` | string | yes | — | Archive path. |
+| `dst` | string | yes | — | Destination directory. |
+| `format` | string | no | `auto` | `auto`, `tar`, `tar.gz`, `tar.bz2`, `tar.xz`, `zip`. |
+| `stripComponents` | integer | no | `0` | Like `tar --strip-components`. |
+| `overwrite` | boolean | no | `true` | Overwrite existing files. |
+| `safelyExtract` | boolean | no | `true` | Zip-slip protection: rejects entries that escape `dst`. |
+| `includes` | array | no | — | Extract only entries matching these patterns. |
+| `excludes` | array | no | — | Skip entries matching these patterns. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `dst` | string | Destination directory (resolved). |
+| `filesProcessed` | integer | Number of extracted files. |
+| `bytesProcessed` | integer | Total extracted size. |
+
+## Examples
+
+**Extract a dependency**
+
+```yaml
+- uses: extract
+  with:
+    src: ./deps/common-copybooks-2.0.0.tar.gz
+    dst: ./vendor/copybooks
+    stripComponents: 1
+```
+
+**Extract a GitHub zip**
+
+```yaml
+- uses: extract
+  with:
+    src: ./downloads/repo-main.zip
+    dst: ./repo
+    stripComponents: 1
+    overwrite: true
+```
+
+**Selective extraction**
+
+```yaml
+- uses: extract
+  with:
+    src: ./bundle.tar.gz
+    dst: ./extracted
+    includes: ['src/**/*.cbl', 'copybook/**']
+    excludes: ['**/*.test.cbl']
+```
+
+## Common errors
+
+- **`stripComponents` too high** — produces an empty directory. Check the archive structure with `tar -tzf` first.
+- **`auto` format guessing wrong** — ambiguous magic bytes. Specify `format:` explicitly when in doubt.
+
+:::warning
+Only disable `safelyExtract` if you absolutely trust the archive source. This protection covers the zip-slip vulnerability.
+:::

@@ -1,0 +1,114 @@
+---
+sidebar_position: 7
+title: notify
+---
+
+# `notify` — Notifications
+
+Sends a notification via a configured channel. v1.0: email (SMTP) and generic webhook. v1.x: Slack, Teams.
+
+```yaml
+- uses: notify
+  with:
+    channel: email
+    target: ['team@example.com']
+    title: Build complete
+    message: 'Module ${{ inputs.module }} compiled successfully'
+```
+
+## Common inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `channel` | string | yes | — | `email`, `webhook` (v1.0). `slack`, `teams` (v1.x). |
+| `target` | string or array | yes | — | Destination (email, webhook URL…). |
+| `title` | string | no | — | Message title. |
+| `message` | string | yes | — | Message body. Markdown allowed depending on channel. |
+| `severity` | string | no | `info` | `info`, `success`, `warning`, `error`. |
+| `fields` | array | no | — | Structured fields `[{ name, value }]`. |
+| `links` | array | no | — | Additional links `[{ text, url }]`. |
+
+### Channel `email` — additional fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `from` | string | Sender (default from profile). |
+| `cc` | array | CC recipients. |
+| `bcc` | array | BCC recipients. |
+| `format` | string | `text` or `html` (default `text`). |
+| `attachments` | array | List of local paths to attach. |
+
+### Channel `webhook` — additional fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `method` | string | `POST` | HTTP method. |
+| `headers` | object | — | Additional headers. |
+| `bodyTemplate` | string | Auto JSON | Go template to customize the body. |
+
+:::note
+SMTP credentials and webhook URLs are stored in the active profile (`~/.automate4z/profiles/<name>.yml`), never in the YAML.
+:::
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `sent` | boolean | `true` if the notification was sent. |
+| `messageId` | string | Message identifier if available. |
+
+## Examples
+
+**Email at end of workflow**
+
+```yaml
+- uses: notify
+  if: ${{ always() }}
+  with:
+    channel: email
+    target: ['team-mainframe@corp.com']
+    title: 'Build ${{ inputs.module }}: ${{ workflow.status }}'
+    message: |
+      Workflow completed in ${{ workflow.duration }}.
+    severity: ${{ workflow.status == 'success' ? 'success' : 'error' }}
+    fields:
+      - { name: Module, value: '${{ inputs.module }}' }
+      - { name: LPAR, value: '${{ inputs.lpar }}' }
+      - { name: RC, value: '${{ steps.compile.outputs.rc }}' }
+```
+
+**Email with attachment**
+
+```yaml
+- uses: notify
+  with:
+    channel: email
+    target: ['dev@corp.com']
+    title: 'Build report ${{ inputs.module }}'
+    message: 'See the report attached.'
+    format: html
+    attachments:
+      - ./build/report.html
+```
+
+**Webhook with custom body**
+
+```yaml
+- uses: notify
+  with:
+    channel: webhook
+    target: https://chat.corp.com/api/v1/messages
+    title: ignored
+    message: ignored
+    bodyTemplate: |
+      {
+        "text": "Build <<.workflow.name>> finished with status <<.workflow.status>>",
+        "channel": "mainframe-builds"
+      }
+```
+
+## Common errors
+
+- **Email rejected by SMTP server** — authentication or TLS misconfigured in the profile.
+- **Webhook 4xx** — expected format differs. Use `bodyTemplate` to adapt.
+- **Attachment too large** — most SMTP servers limit to 10-25 MiB. Prefer a link to the artifact.

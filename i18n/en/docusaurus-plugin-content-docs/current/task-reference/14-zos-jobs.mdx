@@ -1,0 +1,199 @@
+---
+sidebar_position: 14
+title: zos-jobs
+---
+
+# `zos-jobs` — JCL jobs via z/OSMF
+
+Submits a JCL job to a z/OS LPAR via z/OSMF, waits for completion, retrieves SYSOUT. This is the central task of a mainframe build pipeline.
+
+```yaml
+- uses: zos-jobs
+  with:
+    action: submit
+    jcl: src/compile.jcl
+    expectRC: 4
+    timeout: 10m
+```
+
+## Common inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `action` | string | yes | — | `submit`, `status`, `cancel`, `list`, `output`, `files`. |
+| `lpar` | string | no | active profile | Target LPAR profile. |
+
+### Action `submit`
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `jcl` | string | yes | — | `.jcl` file path, inline JCL, or `//USER.JCL(MBR)` (z/OS dataset). |
+| `vars` | object | no | — | `<< >>` substitution in the JCL (client-side). |
+| `wait` | boolean | no | `true` | Wait for job completion. `false` = fire-and-forget. |
+| `expectRC` | integer or `"*"` | no | `0` | Max acceptable RC. `4` accepts 0 and 4. `"*"` accepts anything. |
+| `timeout` | duration | no | `30m` | Max wait duration. |
+| `pollInterval` | duration | no | `5s` | Status polling frequency. |
+| `fetchOutput` | boolean | no | `false` | Retrieve SYSOUT at the end. |
+| `outputDdName` | string | no | — | Specific DD to retrieve (otherwise full SYSOUT). |
+
+**JCL source detection:**
+- Starts with `//` without a space → z/OS dataset reference (submitted server-side)
+- Contains newlines → inline JCL
+- Otherwise → local file path
+
+### Actions `status` / `cancel`
+
+| Field | Type | Required |
+|-------|------|----------|
+| `jobId` | string | yes — e.g. `JOB12345` |
+| `jobName` | string | no — disambiguation |
+
+### Action `list`
+
+| Field | Type | Required | Default |
+|-------|------|----------|---------|
+| `owner` | string | no | `*` |
+| `prefix` | string | no | `*` |
+| `maxJobs` | integer | no | `100` |
+
+### Action `output`
+
+Retrieves the SYSOUT of an already-completed job.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `jobId` | string | yes | — | Job ID. |
+| `ddName` | string | no | — | Specific DD (`SYSPRINT`, `SYSOUT`…). Absent = full concatenated SYSOUT. |
+| `localPath` | string | no | — | Write output to this local file. |
+| `encoding` | string | no | — | Read encoding (e.g. `IBM-1047`). |
+| `maxBytes` | integer | no | `52428800` (50 MB) | Read limit. |
+
+### Action `files`
+
+Lists available spool files (DDs) for a completed job.
+
+| Field | Type | Required |
+|-------|------|----------|
+| `jobId` | string | yes |
+
+## Outputs
+
+| Action | Outputs |
+|--------|---------|
+| `submit` | `jobId`, `jobName`, `jobStatus`, `rc`, `completed` |
+| `status` | `jobId`, `jobName`, `jobStatus`, `rc`, `completed` |
+| `cancel` | `cancelled` (bool), `jobId` |
+| `list` | `jobs` (array), `count` |
+| `output` | `content` (string), `bytesRead`, `localPath` |
+| `files` | `files` (array of `{ ddName, stepName, recordCount, byteCount }`), `count` |
+
+## RC semantics
+
+| z/OSMF `retcode` | Interpretation |
+|-----------------|----------------|
+| `CC 0000` | RC 0 — success |
+| `CC 0004` | RC 4 — acceptable warning |
+| `CC 0008` | RC 8 — error |
+| `ABEND S0C7` | System abend → `ErrJobAbend` |
+| `JCL ERROR` | JCL error → `ErrJclError` |
+
+Abends and JCL errors are **always failures**, except `expectRC: "*"` which accepts anything.
+
+## Typed errors
+
+| Error | Description |
+|-------|-------------|
+| `ErrJclSubmitFailed` | Submission failed. |
+| `ErrJclError` | z/OS detected a JCL error. |
+| `ErrJobAbend` | Job ended in abend. |
+| `ErrJobTimeout` | `timeout` exceeded before job completion. |
+| `ErrRCExceeded` | RC exceeds `expectRC`. |
+| `ErrJobNotFound` | `jobId` not found. |
+
+## Examples
+
+**Compilation with variable substitution**
+
+```yaml
+- id: compile
+  uses: zos-jobs
+  with:
+    action: submit
+    jcl: ./jcl/compile.jcl
+    vars:
+      MODULE: ${{ inputs.module }}
+      LOADLIB: USER.LOAD
+    expectRC: 4
+    timeout: 15m
+```
+
+**Inline JCL**
+
+```yaml
+- uses: zos-jobs
+  with:
+    action: submit
+    jcl: |
+      //<<.Hlq>>CPL JOB CLASS=A
+      //STEP EXEC PGM=IGYCRCTL
+      //SYSIN DD DSN=<<.Hlq>>.COBOL.SRC(<<.Pgm>>),DISP=SHR
+    vars:
+      Hlq: "Z79863"
+      Pgm: "CUSTOMER"
+    expectRC: 4
+```
+
+**Retrieve and analyze SYSPRINT**
+
+```yaml
+- id: compile
+  uses: zos-jobs
+  with:
+    action: submit
+    jcl: ./jcl/compile.jcl
+    fetchOutput: true
+    outputDdName: SYSPRINT
+    expectRC: 4
+
+- id: check-listing
+  uses: shell
+  with:
+    run: |
+      if echo "${{ steps.compile.outputs.sysout }}" | grep -q "IGYPA3020-I"; then
+        echo "Warning IGYPA3020-I detected"
+      fi
+```
+
+**Fire-and-forget then manual wait**
+
+```yaml
+- id: submit-long
+  uses: zos-jobs
+  with:
+    action: submit
+    jcl: ./jcl/long-batch.jcl
+    wait: false
+
+# ... other parallel steps ...
+
+- id: wait-result
+  uses: zos-jobs
+  with:
+    action: status
+    jobId: "${{ steps.submit-long.outputs.jobId }}"
+```
+
+## Common errors
+
+- **`JCL ERROR`** — JCL syntax error. Inspect the downloaded SYSOUT.
+- **`expectRC: 0` failing with RC=4** — many COBOL compilations return 4 on warnings. Prefer `expectRC: 4` for compilations.
+- **`&VAR.` substitution not working** — the substitution uses `<< >>` delimiters, not `&VAR.`. Check the syntax.
+- **Job stuck in queue** — `maxWait` reached. Check JOB class and initiator availability.
+
+## FAQ
+
+**Why is substitution client-side?**
+JES symbolic parameters only work in procedures (PROCs), not in the main JCL. Consistent client-side substitution is more predictable.
+
+**Can I retrieve multiple DDs separately?**
+Yes. Use the `files` action to list available DDs, then `output` with `ddName` for each one.

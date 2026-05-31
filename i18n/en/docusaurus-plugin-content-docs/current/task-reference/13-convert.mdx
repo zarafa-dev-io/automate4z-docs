@@ -1,0 +1,123 @@
+---
+sidebar_position: 13
+title: convert
+---
+
+# `convert` — Format conversion
+
+Converts data between structured formats. v1.0: JSON, YAML, CSV. v1.x: XML, TSV.
+
+```yaml
+- uses: convert
+  with:
+    src: ./data/clients.csv
+    from: csv
+    to: json
+    dst: ./data/clients.json
+```
+
+## Inputs
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `src` | string | one of the two | Local path to the source file. |
+| `content` | string or object | one of the two | Inline content. |
+| `from` | string | yes | `json`, `yaml`, `csv`. |
+| `to` | string | yes | Same as `from`. |
+| `dst` | string | no | Output file. If absent, in `outputs.result`. |
+| `options` | object | no | Format-specific options (see below). |
+
+### CSV options
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `csvDelimiter` | string | `,` | Separator. |
+| `csvHeader` | boolean | `true` | First row = header. |
+| `csvQuote` | string | `"` | Quote character. |
+
+### JSON options
+
+| Field | Type | Default |
+|-------|------|---------|
+| `jsonIndent` | integer | `2` — `0` = compact |
+
+### YAML options
+
+| Field | Type | Default |
+|-------|------|---------|
+| `yamlIndent` | integer | `2` |
+| `yamlFlowStyle` | boolean | `false` |
+
+### Flatten options
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `flatten` | boolean | `false` | Flatten nested objects for CSV. |
+| `flattenSeparator` | string | `.` | Separator (`user.name`). |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `result` | any | Converted data if `dst` not provided. |
+| `rowCount` | integer | For CSV: number of rows (excluding header). |
+| `bytesWritten` | integer | If `dst` provided. |
+
+## Examples
+
+**CSV (from a z/OS batch) to JSON for an API**
+
+```yaml
+- id: read-export
+  uses: fs
+  with:
+    action: read
+    path: ./exports/clients.csv
+
+- id: as-json
+  uses: convert
+  with:
+    content: ${{ steps.read-export.outputs.content }}
+    from: csv
+    to: json
+    options:
+      csvHeader: true
+      jsonIndent: 0
+
+- uses: http
+  with:
+    method: POST
+    url: https://api.corp/clients/import
+    body: ${{ steps.as-json.outputs.result }}
+```
+
+**YAML manifest to JSON for a third-party tool**
+
+```yaml
+- uses: convert
+  with:
+    src: ./z-manifest.yaml
+    from: yaml
+    to: json
+    dst: ./build/z-manifest.json
+```
+
+**Nested JSON to flat CSV**
+
+```yaml
+- uses: convert
+  with:
+    content: ${{ steps.api.outputs.body }}
+    from: json
+    to: csv
+    dst: ./report.csv
+    options:
+      flatten: true
+      csvHeader: true
+      csvDelimiter: ';'
+```
+
+## Common errors
+
+- **CSV without header in `csvHeader: true` mode** — bad parsing. Check the file.
+- **Source encoding** — a CSV in Windows-1252 read as UTF-8 produces garbled characters. Pre-convert via `fs.read` with `encoding:`.

@@ -1,0 +1,139 @@
+---
+sidebar_position: 3
+title: Steps
+---
+
+# Steps
+
+A step is the unit of execution in a workflow.
+
+```yaml
+steps:
+  - id: compile
+    name: Compile COBOL
+    uses: zos-jobs
+    needs: [upload-sources]
+    if: ${{ inputs.optimize == true }}
+    timeout: 5m
+    continueOnError: false
+    with:
+      jcl: ./jcl/compile.jcl
+      lpar: ${{ inputs.lpar }}
+      vars:
+        MODULE: ${{ inputs.module }}
+      expectRC: 0
+```
+
+## Step fields
+
+| Field | Type | Required | Version | Description |
+|-------|------|----------|---------|-------------|
+| `id` | string | yes | v1.0 | Unique identifier. Regex `^[a-z][a-z0-9-]{0,62}[a-z0-9]$`. |
+| `name` | string | no | v1.0 | Label shown in logs. Default: `id`. |
+| `uses` | string | yes (unless `run`) | v1.0 | Name of a built-in task. |
+| `run` | string | yes (unless `uses`) | v1.0 | Shorthand for `uses: shell`. |
+| `with` | object | no | v1.0 | Parameters passed to the task. |
+| `needs` | string or array | no | v1.0 | Explicit dependencies. |
+| `if` | string (expression) | no | v1.0 | Execution condition. |
+| `env` | object | no | v1.0 | Step-specific env vars. |
+| `timeout` | duration | no | v1.0 | Max duration (e.g. `30s`, `5m`, `1h`). |
+| `continueOnError` | boolean | no | v1.0 | If `true`, failure does not stop the workflow. |
+| `retry` | object | no | v1.x | Retry policy. |
+| `forEach` | expression | no | v1.x | Iterate over a collection. |
+| `as` | string | no | v1.x | Iteration variable name (default `item`). |
+| `parallel` | integer | no | v1.x | Iteration parallelism. |
+
+## `uses` vs `run`
+
+```yaml
+# Long form
+- id: hello
+  uses: shell
+  with:
+    run: echo hello
+
+# Equivalent shorthand
+- id: hello
+  run: echo hello
+```
+
+`run` is syntactic sugar for `uses: shell` with `with.run`.
+
+## Dependencies: `needs`
+
+By default, steps run **sequentially** in array order. With `needs`, the runtime builds a DAG:
+
+```yaml
+steps:
+  - id: a
+    run: echo a
+  - id: b
+    needs: [a]
+    run: echo b
+  - id: c
+    needs: [a]      # b and c parallelizable after a
+    run: echo c
+  - id: d
+    needs: [b, c]   # d waits for both b and c
+    run: echo d
+```
+
+A cycle in `needs` causes a lint failure.
+
+## Step outputs
+
+Task outputs are accessible via `${{ steps.<id>.outputs.<name> }}`.
+
+**Implicit outputs** available for every step:
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `exitCode` | integer | Task return code. |
+| `duration` | string | Execution duration (Go format, e.g. `1.23s`). |
+| `status` | string | `success`, `failure`, `skipped`, `cancelled`. |
+
+## Retry (v1.x)
+
+```yaml
+- id: flaky
+  uses: http
+  retry:
+    maxAttempts: 3
+    backoff: exponential   # constant | linear | exponential
+    initialDelay: 2s
+    maxDelay: 30s
+    on: [failure, timeout]
+```
+
+## Iteration: `forEach` (v1.x)
+
+Executes the task once per element in a collection:
+
+```yaml
+- id: list-modules
+  uses: fs
+  with:
+    action: list
+    path: ./src
+    pattern: '**/*.cbl'
+
+- id: compile-all
+  needs: [list-modules]
+  forEach: ${{ steps.list-modules.outputs.entries }}
+  as: file
+  parallel: 4
+  uses: zos-jobs
+  with:
+    jcl: ./jcl/compile.jcl
+    vars:
+      MODULE: ${{ file.name }}
+```
+
+The step's outputs become an array where each element corresponds to one iteration:
+
+```yaml
+- id: report
+  needs: [compile-all]
+  run: |
+    echo "Compiled ${{ length(steps.compile-all.outputs) }} modules"
+```

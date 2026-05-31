@@ -1,0 +1,80 @@
+---
+sidebar_position: 4
+title: archive
+---
+
+# `archive` — Create archives
+
+Creates an archive (tar, tar.gz, zip, etc.) from a local file or directory.
+
+```yaml
+- uses: archive
+  with:
+    format: tar.gz
+    src: ./build
+    dst: ./artifacts/build.tar.gz
+```
+
+## Inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `format` | string | yes | — | `tar`, `tar.gz`, `tar.bz2`, `tar.xz`, `zip`. |
+| `src` | string or array | yes | — | File, directory, or list of sources. |
+| `dst` | string | yes | — | Path of the archive to create. |
+| `excludes` | array | no | — | Glob patterns to exclude. |
+| `includes` | array | no | — | Glob patterns to include (positive filter). |
+| `compressionLevel` | integer | no | `6` | Compression level 1-9 (compressed formats). |
+| `preservePaths` | string | no | `relative` | `relative`, `absolute`, `basename`. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `dst` | string | Path of the created archive. |
+| `bytesProcessed` | integer | Total size of source files. |
+| `filesProcessed` | integer | Number of archived files. |
+| `archiveSize` | integer | Final archive size. |
+
+## Examples
+
+**Simple directory archive**
+
+```yaml
+- uses: archive
+  with:
+    format: tar.gz
+    src: ./build
+    dst: ./artifacts/release-${{ inputs.version }}.tar.gz
+    excludes: ['*.tmp', '*.log', '.DS_Store']
+```
+
+**Archive multiple sources**
+
+```yaml
+- uses: archive
+  with:
+    format: zip
+    src:
+      - ./src
+      - ./docs
+      - ./README.md
+    dst: ./artifacts/source-bundle.zip
+```
+
+**COBOL load modules**
+
+```yaml
+- uses: archive
+  with:
+    format: tar.gz
+    src: ./build/loadlib
+    dst: ./artifacts/loadlib-${{ inputs.version }}.tar.gz
+    includes: ['*.bin']
+    compressionLevel: 9
+```
+
+## Common errors
+
+- **Misspelled `format`** — only the 5 listed formats are supported. `tgz` or `gz` alone are not accepted: always prefix with `tar.`.
+- **`preservePaths: absolute`** — may produce long paths that cause issues on Windows (260-char limit). Prefer `relative`.

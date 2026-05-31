@@ -1,0 +1,91 @@
+---
+sidebar_position: 1
+title: shell
+---
+
+# `shell` — Local execution
+
+Runs a local command on the machine running `a4z`. This is the universal escape hatch: anything you can do on the command line can be chained in a workflow.
+
+```yaml
+- uses: shell
+  with:
+    run: echo "hello"
+```
+
+Equivalent shorthand:
+
+```yaml
+- run: echo "hello"
+```
+
+## Inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `run` | string | yes | — | Command(s) to run. Multiline allowed. |
+| `workdir` | string | no | workflow dir | Working directory for the command. |
+| `shell` | string | no | `bash` (Unix), `pwsh` (Windows) | Interpreter: `bash`, `sh`, `pwsh`, `cmd`, `python`. |
+| `env` | object | no | — | Additional environment variables. |
+| `stripAnsi` | boolean | no | `false` | Strip ANSI codes from captured output. |
+| `maxOutputBytes` | integer | no | `10485760` (10 MiB) | Max captured size per stream. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `stdout` | string | Captured standard output. |
+| `stderr` | string | Error output. |
+| `exitCode` | integer | Return code (overrides implicit). |
+
+## Examples
+
+**Simple command**
+
+```yaml
+- id: greet
+  run: echo "Build of ${{ inputs.module }} starting"
+```
+
+**Multiline script with variables**
+
+```yaml
+- id: build
+  uses: shell
+  with:
+    shell: bash
+    workdir: ./src
+    env:
+      OPTIMIZE: 'true'
+    run: |
+      set -euo pipefail
+      echo "Building in $(pwd)"
+      make all OPTIMIZE=$OPTIMIZE
+      ls -la build/
+```
+
+**Using an output in the next step**
+
+```yaml
+- id: count
+  run: find . -name '*.cbl' | wc -l
+
+- id: report
+  needs: [count]
+  run: echo "Found ${{ steps.count.outputs.stdout }} COBOL files"
+```
+
+## Common errors
+
+- **`exit status 127`** — command not found in `PATH`. Check `which <cmd>` or use an absolute path.
+- **Unsubstituted variables** — `set -euo pipefail` combined with an undefined variable fails silently. Always define variables in `env:` or export them.
+- **Truncated output** — a verbose step may exceed `maxOutputBytes`. Write to a file and use a dedicated parsing step.
+- **Windows/Unix quoting differences** — prefer `shell: bash` for portable workflows.
+
+## FAQ
+
+**How do I pass secrets without them appearing in logs?**
+Reference via `${{ secrets.X }}`; the runtime automatically masks the value. Never `echo ${{ secrets.X }}`.
+
+**Can I launch a long-running daemon?**
+`shell` waits for the process to finish. For fire-and-forget, use `nohup … &` with a PID written to a file.

@@ -1,0 +1,169 @@
+---
+sidebar_position: 3
+title: fs
+---
+
+# `fs` — Local filesystem
+
+Operations on the local filesystem: create, remove, copy, move, read, write, list files and directories. Local counterpart to `zos-datasets`, with correct Windows/Unix portability and typed output.
+
+```yaml
+- uses: fs
+  with:
+    action: mkdir
+    path: ./build/output
+    recursive: true
+```
+
+## Common inputs
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | string | yes | `mkdir`, `remove`, `copy`, `move`, `write`, `read`, `exists`, `list`. |
+
+### Action `mkdir`
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `path` | string | yes | — | Directory path. |
+| `recursive` | boolean | no | `true` | Create missing parents (`mkdir -p`). |
+| `mode` | string | no | `0755` | Unix permissions. |
+
+### Action `remove`
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `path` | string | yes | — | Path to remove. |
+| `recursive` | boolean | no | `false` | Required for a non-empty directory. |
+| `force` | boolean | no | `false` | Do not fail if path does not exist. |
+| `glob` | boolean | no | `false` | Treat `path` as a glob pattern. |
+
+### Action `copy`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `src` | string | yes | Source. |
+| `dst` | string | yes | Destination. |
+| `recursive` | boolean | no | For a directory (default `false`). |
+| `overwrite` | boolean | no | Overwrite if target exists (default `true`). |
+
+### Action `move`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `src` | string | yes | Source. |
+| `dst` | string | yes | Destination. |
+| `overwrite` | boolean | no | Default `false`. |
+
+### Action `write`
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `path` | string | yes | — | Path of the file to write. |
+| `content` | string | yes | — | Content to write. |
+| `mode` | string | no | `0644` | Unix permissions. |
+| `createDirs` | boolean | no | `true` | Create missing parent directories. |
+| `encoding` | string | no | `utf-8` | Target encoding. |
+| `append` | boolean | no | `false` | Append instead of overwrite. |
+
+### Action `read`
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `path` | string | yes | — | Path of the file to read. |
+| `parse` | string | no | `text` | `text`, `json`, `yaml`. If not `text`, content is deserialized. |
+| `encoding` | string | no | `utf-8` | Source encoding. |
+| `maxBytes` | integer | no | `1048576` | Safety limit (1 MiB). |
+
+### Action `exists`
+
+| Field | Type | Required |
+|-------|------|----------|
+| `path` | string | yes |
+
+### Action `list`
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `path` | string | yes | — | Directory to list. |
+| `pattern` | string | no | `**/*` | Glob pattern (doublestar). |
+| `recursive` | boolean | no | `true` | Descend into subdirectories. |
+| `includeDirs` | boolean | no | `false` | Include directories in results. |
+
+**Supported encodings**: `utf-8`, `utf-16`, `ascii`, `iso-8859-1`, `iso-8859-15`, `windows-1252`, `ibm-1047`, `ibm-1140`, `ibm-500`.
+
+## Outputs
+
+| Action | Outputs |
+|--------|---------|
+| `mkdir` | `created` (bool) |
+| `remove` | `removed` (array of removed paths) |
+| `copy`, `move` | `bytesTransferred`, `filesTransferred` |
+| `write` | `bytesWritten`, `created` |
+| `read` | `content` (string or object), `bytesRead` |
+| `exists` | `exists` (bool), `type` (`file`, `dir`, `symlink`) |
+| `list` | `entries` (array of `{ name, path, size, isDir, modTime }`), `count` |
+
+## Examples
+
+**Prepare a build directory**
+
+```yaml
+- id: prepare
+  uses: fs
+  with:
+    action: mkdir
+    path: ./build/artifacts
+
+- id: clean-old
+  uses: fs
+  with:
+    action: remove
+    path: ./build/artifacts/old-*
+    glob: true
+    force: true
+```
+
+**Read a JSON file and use its content**
+
+```yaml
+- id: read-config
+  uses: fs
+  with:
+    action: read
+    path: ./config.json
+    parse: json
+
+- id: deploy
+  uses: zos-jobs
+  with:
+    jcl: ./jcl/deploy.jcl
+    vars:
+      ENV: ${{ steps.read-config.outputs.content.environment }}
+      VERSION: ${{ steps.read-config.outputs.content.version }}
+```
+
+**Read an EBCDIC file received from a partner**
+
+```yaml
+- id: read-ebcdic
+  uses: fs
+  with:
+    action: read
+    path: ./received-from-partner.bin
+    encoding: ibm-500
+
+- id: write-utf8
+  uses: fs
+  with:
+    action: write
+    path: ./received.utf8.txt
+    content: ${{ steps.read-ebcdic.outputs.content }}
+```
+
+## Common errors
+
+- **`permission denied`** — insufficient permissions on the parent directory.
+- **Path traversal rejected** — a `path: ../../../etc/passwd` is rejected by default.
+- **`fs.remove` on non-empty directory without `recursive: true`** — explicit failure. Protection against accidental deletion.
+- **Corrupted encoding** — a binary file read as `utf-8` is corrupted. For binaries, use `shell: cp` or `archive`/`extract`.

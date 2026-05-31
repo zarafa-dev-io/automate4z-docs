@@ -1,0 +1,84 @@
+---
+sidebar_position: 2
+title: Inputs
+---
+
+# Inputs
+
+`inputs` type the workflow's input parameters. They are provided:
+- via CLI: `a4z run wf.yml --input module=COBPRG01`
+- via file: `a4z run wf.yml --inputs-file values.yml`
+- via **interactive CLI** (v1.x): `a4z run` detects missing inputs and prompts for them
+- from a calling workflow (v1.x)
+
+```yaml
+inputs:
+  module:
+    type: string
+    required: true
+    description: Name of the COBOL module to compile.
+    help: |
+      The module must exist in USER.SRC or be referenced
+      in the z-deps manifest.
+
+  lpar:
+    type: string
+    default: dev01
+    enum: [dev01, dev02, int01]
+    description: Target z/OS LPAR.
+
+  optimize:
+    type: boolean
+    default: false
+
+  retries:
+    type: integer
+    default: 3
+    minimum: 0
+    maximum: 10
+```
+
+## Supported types
+
+| Type | Values | Additional constraints | Version |
+|------|--------|----------------------|---------|
+| `string` | string | `enum`, `pattern`, `minLength`, `maxLength` | v1.0 |
+| `integer` | signed 64-bit integer | `minimum`, `maximum`, `enum` | v1.0 |
+| `number` | 64-bit float | `minimum`, `maximum` | v1.0 |
+| `boolean` | true/false | — | v1.0 |
+| `array` | typed list | `items: { type: ... }` | v1.x |
+| `object` | free mapping | `properties`, `required` | v1.x |
+
+## Metadata fields
+
+| Field | Type | Version | Description |
+|-------|------|---------|-------------|
+| `description` | string | v1.0 | Short description, shown next to the field. |
+| `help` | string (markdown) | v1.0 | Long documentation. |
+| `label` | string | v1.x | Text shown instead of the technical name. |
+| `group` | string | v1.x | Form section organization. |
+| `order` | integer | v1.x | Display order. Without `order`, declaration order is used. |
+| `sensitive` | boolean | v1.x | Masked input (password style). |
+| `when` | string (expression) | v1.x | Input shown only if condition is true. |
+
+## Referencing
+
+An input is referenced by `${{ inputs.<name> }}` anywhere an expression is accepted.
+
+## Interactive CLI (v1.x)
+
+In v1.x, if `a4z run` is executed without providing all required inputs and the terminal is interactive, `a4z` prompts for missing values:
+
+```
+$ a4z run deploy.yml
+? Module to compile: COBPRG01
+? Target LPAR: (use arrows)
+  > dev01
+    dev02
+    prod01
+? Confirm optimization? (y/N) y
+```
+
+In non-interactive contexts (CI/CD, pipe), missing required inputs produce an immediate error.
+
+The `--non-interactive` flag forces this behavior even in a TTY.

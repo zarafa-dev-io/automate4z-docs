@@ -1,0 +1,120 @@
+---
+sidebar_position: 16
+title: z-deps
+---
+
+# `z-deps` — COBOL dependency resolution
+
+Dependency resolver for COBOL modules and copybooks, inspired by Maven/Cargo. Reads a dependency manifest, resolves versions (lockfile-first or update mode), downloads artifacts from GitHub releases (or compatible registry).
+
+```yaml
+- uses: z-deps
+  with:
+    manifest: ./z-manifest.yaml
+    lockfile: ./z-deps.lock
+```
+
+## Inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `manifest` | string | no | `./z-manifest.yaml` | Manifest path. |
+| `lockfile` | string | no | `./z-deps.lock` | Lockfile path. |
+| `update` | boolean | no | `false` | Recalculate versions and rewrite the lockfile. Otherwise, strict mode: fails if lockfile is missing or out of sync. |
+| `cache` | string | no | `~/.automate4z/cache/z-deps` | Local cache directory. |
+| `registry` | string or array | no | from manifest | Registry override. |
+| `targetDir` | string | no | `./.a4z/deps/` | Artifact extraction directory. |
+| `verify` | boolean | no | `true` | Checksum verification. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `resolved` | array | `[ { name, version, source, integrity, path } ]` |
+| `cacheHits` | integer | Number of dependencies served from cache. |
+| `downloaded` | integer | Number of dependencies downloaded. |
+| `lockfileChanged` | boolean | `true` if `update: true` modified the lockfile. |
+| `targetDir` | string | Actual extraction path (resolved). |
+
+## Manifest format `z-manifest.yaml`
+
+```yaml
+name: myapp
+version: 1.4.0
+dependencies:
+  - name: common-copybooks
+    version: ^2.0.0
+    source: github.com/example/cobol-common
+  - name: utils
+    version: '=1.3.2'
+    source: github.com/example/cobol-utils
+registries:
+  - github.com
+```
+
+Resolution strategy: **nearest-wins** on transitive conflicts.
+
+:::note
+`version: latest` or `*` is rejected at lint time. Only explicit SemVer ranges or pinned versions are accepted.
+:::
+
+## Examples
+
+**Strict resolution in CI**
+
+```yaml
+- uses: z-deps
+  with:
+    manifest: ./z-manifest.yaml
+    lockfile: ./z-deps.lock
+    # update: false by default → fails if lockfile is out of sync
+```
+
+**Local update (equivalent to `npm install`)**
+
+```yaml
+- uses: z-deps
+  with:
+    update: true
+```
+
+**Complete workflow: resolve, upload, compile**
+
+```yaml
+steps:
+  - id: deps
+    uses: z-deps
+    with:
+      manifest: ./z-manifest.yaml
+
+  - id: upload-deps
+    needs: [deps]
+    uses: zos-datasets
+    with:
+      action: upload
+      localPath: ${{ steps.deps.outputs.targetDir }}/copybooks
+      dataset: USER.MYAPP.COPYBOOK
+
+  - id: compile
+    needs: [upload-deps]
+    uses: zos-jobs
+    with:
+      jcl: ./jcl/compile.jcl
+      vars:
+        MODULE: ${{ inputs.module }}
+        COPYLIB: USER.MYAPP.COPYBOOK
+```
+
+## Common errors
+
+- **`lockfile out of sync with manifest`** — a developer modified the manifest without regenerating the lockfile. Run with `update: true` locally and commit the `.lock`.
+- **`integrity mismatch`** — downloaded artifact doesn't match the expected checksum. Either a transient corruption (retry) or the artifact was republished with the same tag.
+- **`source not reachable`** — GitHub registry unreachable. Check connectivity and tokens for private repos.
+
+## FAQ
+
+**Can the `a4z` binary work offline?**
+Yes, if the local cache contains all dependencies and the lockfile is valid.
+
+**Why GitHub releases as the canonical source?**
+Universally available, free, supports binary artifacts + checksums. Avoids running a dedicated registry.

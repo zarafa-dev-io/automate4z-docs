@@ -1,0 +1,94 @@
+---
+sidebar_position: 10
+title: json-query
+---
+
+# `json-query` — jq query on JSON
+
+Executes a jq query against JSON. Essential for extracting values from API responses, config files, or outputs from previous tasks.
+
+Implementation: `github.com/itchyny/gojq` (pure Go jq, identical syntax to official jq).
+
+```yaml
+- uses: json-query
+  with:
+    src: ./api-response.json
+    query: '.modules[].name'
+```
+
+## Inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `src` | string | one of the two | — | Local path to a JSON file. |
+| `content` | string or object | one of the two | — | Inline JSON content or already-parsed object. |
+| `query` | string | yes | — | jq expression. |
+| `output` | string | no | `array` | `array` (all), `first` (first), `scalar` (single result expected). |
+| `raw` | boolean | no | `false` | Return strings without quotes (equivalent to `jq -r`). |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `result` | any | Query result. |
+| `count` | integer | Number of results. |
+
+## Examples
+
+**Extract a list from an API response**
+
+```yaml
+- id: get-modules
+  uses: http
+  with:
+    url: https://api.corp/modules
+
+- id: names
+  uses: json-query
+  with:
+    content: ${{ steps.get-modules.outputs.body }}
+    query: '.modules | map(select(.active == true)) | .[].name'
+    output: array
+
+- run: echo "Active modules: ${{ steps.names.outputs.result }}"
+```
+
+**Read a version from package.json**
+
+```yaml
+- id: version
+  uses: json-query
+  with:
+    src: ./package.json
+    query: '.version'
+    output: scalar
+    raw: true
+
+- run: echo "Building version ${{ steps.version.outputs.result }}"
+```
+
+**Complex filtering**
+
+```yaml
+- uses: json-query
+  with:
+    content: ${{ steps.fetch.outputs.body }}
+    query: |
+      .jobs
+      | map(select(.status == "failed"))
+      | map({ name, rc, duration })
+    output: array
+```
+
+## Common errors
+
+- **`output: scalar` but multiple results** — explicit failure. Use `output: first` if you just want the first one.
+- **Already-parsed content vs string** — if `content` is a string, the parser tries JSON.parse first. If it's already an object, it's used directly.
+
+## FAQ
+
+**Full jq syntax supported?**
+Yes, gojq implements full jq.
+
+**Performance on large JSON?**
+gojq loads everything into memory. For > 100 MiB, prefer a `shell: jq ...` step.

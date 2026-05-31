@@ -1,0 +1,73 @@
+---
+sidebar_position: 1
+title: Introduction
+---
+
+# automate4z
+
+**automate4z** is an open-source workflow orchestrator that erases the boundary between z/OS mainframe execution and local execution.
+
+Distributed as a **single binary `a4z`** (Linux / macOS / Windows × amd64 / arm64), with no runtime required. Workflows are defined in YAML with syntax inspired by GitHub Actions, adapted for the mainframe.
+
+---
+
+## Why automate4z?
+
+COBOL teams transitioning to DevOps face a recurring problem: modern CI/CD tools don't speak mainframe. Every pipeline contains hand-rolled scripts that submit JCL jobs, download datasets, and check return codes — all without type safety or observability.
+
+automate4z solves this with a single YAML file, a single binary, and a consistent interface for both worlds.
+
+---
+
+## Key features
+
+| Feature | Description |
+|---------|-------------|
+| **16 built-in tasks** | Shell, HTTP, filesystem, archives, notifications, JSON/YAML queries, templates, z/OS jobs and datasets |
+| **DAG execution** | Step dependencies resolved automatically; independent steps run in parallel |
+| **`$\{{ }}` expressions** | Context interpolation (inputs, outputs, env, runner) with built-in functions |
+| **z/OSMF profiles** | Connect to LPARs via Zowe profiles or env vars; secrets never in the YAML |
+| **Lint + Plan** | Validate a workflow and display the execution plan without running it |
+| **Single binary** | No Node.js, Python, or Java required — one cross-platform executable |
+
+---
+
+## Minimal example
+
+```yaml
+apiVersion: automate4z/v1
+kind: Workflow
+name: hello-world
+
+inputs:
+  name:
+    type: string
+    default: World
+
+steps:
+  - id: greet
+    run: echo "Hello, ${{ inputs.name }}!"
+```
+
+```bash
+a4z run hello.yml --input name=Alice
+```
+
+---
+
+## Documentation structure
+
+| Section | Content |
+|---------|---------|
+| [Getting started](getting-started) | Installation, first workflow, commands, examples |
+| [CLI reference](cli-reference) | `a4z run`, `lint`, `plan`, `version` and all flags |
+| [Workflow spec](workflow-spec/structure) | Full YAML format: inputs, steps, expressions, secrets |
+| [Task reference](task-reference/overview) | Detailed documentation for all 16 built-in tasks |
+
+---
+
+## Project status
+
+**v1.1.0 — z/OS tasks stable.** All 16 built-in tasks are stable. z/OS tasks (`zos-jobs`, `zos-datasets`, `z-deps`) are available and validated against z/Xplore.
+
+See the [v1.1.0 release notes](https://github.com/zarafa-dev-io/automate4z/blob/master/docs/releases/v1.1.0.md) and the [GitHub repository](https://github.com/zarafa-dev-io/automate4z) for the changelog and issues.

@@ -1,0 +1,115 @@
+---
+sidebar_position: 3
+title: CLI Reference
+---
+
+# CLI Reference
+
+## `a4z run <workflow.yml>`
+
+Executes a workflow end-to-end.
+
+```bash
+a4z run my-workflow.yml
+a4z run my-workflow.yml --input module=COBPRG01 --input lpar=dev01
+a4z run my-workflow.yml --dry-run
+a4z run my-workflow.yml --log-format json
+a4z run my-workflow.yml --parallelism 8
+a4z run my-workflow.yml --keep-runs 20
+```
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--input/-i key=value` | — | Input value (repeatable) |
+| `--inputs-file` | — | YAML file of input values |
+| `--dry-run` | `false` | Display the plan without executing |
+| `--log-format` | `text` | Output format: `text` or `json` |
+| `--parallelism/-p` | `4` | Max number of simultaneous steps |
+| `--keep-runs` | `50` | Number of run directories to keep |
+
+---
+
+## `a4z lint <workflow.yml>`
+
+Validates a workflow without executing it. Checks:
+
+- YAML syntax
+- JSON Schema conformance
+- Uniqueness of step `id`s
+- Absence of cycles in `needs`
+- Valid `needs` references
+- Validity of `with` against each task's schema
+
+```bash
+a4z lint my-workflow.yml
+a4z lint my-workflow.yml --format json
+a4z lint my-workflow.yml --strict         # warnings → errors
+```
+
+Text output:
+
+```
+my-workflow.yml:12:3  error  step id "build" references unknown step "compile" in needs
+my-workflow.yml:18:1  error  cycle detected: alpha → beta → gamma → alpha
+```
+
+---
+
+## `a4z plan <workflow.yml>`
+
+Displays the execution plan — resolved inputs and topological levels — without executing.
+
+```bash
+a4z plan my-workflow.yml
+a4z plan my-workflow.yml --input module=COBPRG01
+a4z plan my-workflow.yml --format json
+```
+
+Output:
+
+```
+Workflow: my-workflow
+Inputs:
+  module  COBPRG01  (provided)
+  lpar    dev01     (default)
+
+Execution plan:
+  Level 1:  resolve-deps, prepare-build-dir
+  Level 2:  upload-sources
+  Level 3:  compile
+```
+
+---
+
+## `a4z version`
+
+Displays the binary version.
+
+```bash
+a4z version
+# a4z v1.1.0
+```
+
+---
+
+## Global flags
+
+Available on all commands:
+
+| Flag | Description |
+|------|-------------|
+| `--verbose/-v` | Verbosity (once = info, twice = debug) |
+| `--no-color` | Disable colors (also honored via `NO_COLOR=1`) |
+| `--profile` | Configuration profile (default: `default`) |
+
+---
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Business failure (lint with errors, run with a failed step) |
+| `2` | Internal error (file not found, invalid YAML, unexpected error) |
