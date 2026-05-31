@@ -1,41 +1,45 @@
-# Website
+# automate4z-docs
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+Documentation website for [automate4z](https://github.com/zarafa-dev-io/automate4z) — the open-source workflow orchestrator for COBOL developers bridging z/OS mainframe and modern DevOps.
 
-## Installation
+**Live site:** https://zarafa-dev-io.github.io/automate4z-docs/
 
-```bash
-yarn
+## Contents
+
+```
+docs/           # Documentation pages (Markdown/MDX)
+  intro.mdx
+  getting-started.mdx
+  cli-reference.mdx
+  task-reference/    # One page per built-in task
+  workflow-spec/     # Formal YAML specification
+static/         # Static assets served at the root of the site
+  releases/          # Binary releases (copied automatically by CI)
+  img/
+src/            # React components, CSS
+blog/           # Blog posts
 ```
 
-## Local Development
+## Local development
 
 ```bash
-yarn start
+npm install
+npm start
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+## Releases
 
-## Build
+Binary releases are published automatically to `static/releases/` by the [release workflow](https://github.com/zarafa-dev-io/automate4z/blob/master/.github/workflows/release.yml) in the main repo each time a new version tag is pushed.
 
-```bash
-yarn build
+Download links are served at:
+```
+https://zarafa-dev-io.github.io/automate4z-docs/releases/<filename>
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+## Contributing
 
-## Deployment
+PRs welcome for documentation improvements. Source of truth for the spec and task reference is the main [automate4z](https://github.com/zarafa-dev-io/automate4z) repo.
 
-Using SSH:
+## License
 
-```bash
-USE_SSH=true yarn deploy
-```
-
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+Apache 2.0
