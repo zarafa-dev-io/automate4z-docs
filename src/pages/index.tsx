@@ -26,7 +26,7 @@ function HomepageHeader() {
           <Link
             className="button button--outline button--secondary button--lg"
             style={{marginLeft: '1rem'}}
-            to="/docs/task-reference/00-overview">
+            to="/docs/task-reference/overview">
             Référence des tâches
           </Link>
         </div>
