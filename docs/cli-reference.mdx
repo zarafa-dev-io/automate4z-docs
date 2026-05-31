@@ -1,0 +1,115 @@
+---
+sidebar_position: 3
+title: Référence CLI
+---
+
+# Référence CLI
+
+## `a4z run <workflow.yml>`
+
+Exécute un workflow de bout en bout.
+
+```bash
+a4z run mon-workflow.yml
+a4z run mon-workflow.yml --input module=COBPRG01 --input lpar=dev01
+a4z run mon-workflow.yml --dry-run
+a4z run mon-workflow.yml --log-format json
+a4z run mon-workflow.yml --parallelism 8
+a4z run mon-workflow.yml --keep-runs 20
+```
+
+### Flags
+
+| Flag | Défaut | Description |
+|------|--------|-------------|
+| `--input/-i key=value` | — | Valeur d'un input (répétable) |
+| `--inputs-file` | — | Fichier YAML de valeurs d'inputs |
+| `--dry-run` | `false` | Affiche le plan sans exécuter |
+| `--log-format` | `text` | Format de sortie : `text` ou `json` |
+| `--parallelism/-p` | `4` | Nombre max de steps simultanés |
+| `--keep-runs` | `50` | Nombre de répertoires de run à conserver |
+
+---
+
+## `a4z lint <workflow.yml>`
+
+Valide un workflow sans l'exécuter. Vérifie :
+
+- Syntaxe YAML
+- Conformité au JSON Schema
+- Unicité des `id` de steps
+- Absence de cycles dans `needs`
+- Référencement valide des `needs`
+- Validité des `with` contre le schéma de chaque tâche
+
+```bash
+a4z lint mon-workflow.yml
+a4z lint mon-workflow.yml --format json
+a4z lint mon-workflow.yml --strict         # warnings → erreurs
+```
+
+Sortie texte :
+
+```
+mon-workflow.yml:12:3  error  step id "build" references unknown step "compile" in needs
+mon-workflow.yml:18:1  error  cycle detected: alpha → beta → gamma → alpha
+```
+
+---
+
+## `a4z plan <workflow.yml>`
+
+Affiche le plan d'exécution — inputs résolus et niveaux topologiques — sans exécuter.
+
+```bash
+a4z plan mon-workflow.yml
+a4z plan mon-workflow.yml --input module=COBPRG01
+a4z plan mon-workflow.yml --format json
+```
+
+Sortie :
+
+```
+Workflow: mon-workflow
+Inputs:
+  module  COBPRG01  (provided)
+  lpar    dev01     (default)
+
+Execution plan:
+  Level 1:  resolve-deps, prepare-build-dir
+  Level 2:  upload-sources
+  Level 3:  compile
+```
+
+---
+
+## `a4z version`
+
+Affiche la version du binaire.
+
+```bash
+a4z version
+# a4z 0.x.y
+```
+
+---
+
+## Flags globaux
+
+Disponibles sur toutes les commandes :
+
+| Flag | Description |
+|------|-------------|
+| `--verbose/-v` | Verbosité (une fois = info, deux fois = debug) |
+| `--no-color` | Désactive les couleurs (honoré aussi via `NO_COLOR=1`) |
+| `--profile` | Profil de configuration (défaut : `default`) |
+
+---
+
+## Codes de sortie
+
+| Code | Signification |
+|------|---------------|
+| `0` | Succès |
+| `1` | Échec métier (lint avec erreurs, run avec step en échec) |
+| `2` | Erreur interne (fichier introuvable, YAML invalide, erreur inattendue) |

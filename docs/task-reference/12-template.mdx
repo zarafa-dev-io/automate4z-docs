@@ -1,0 +1,113 @@
+---
+sidebar_position: 12
+title: template
+---
+
+# `template` — Rendu de templates
+
+Rend un template Go (`text/template`) enrichi par les fonctions Sprig. Utile pour générer des fichiers de config, du JCL paramétré, des rapports.
+
+Délimiteurs par défaut : `<<` et `>>` pour éviter la collision visuelle avec les expressions `${{ }}` du workflow.
+
+```yaml
+- uses: template
+  with:
+    src: ./templates/compile.jcl.tmpl
+    dst: ./build/jcl/compile.jcl
+    vars:
+      MODULE: ${{ inputs.module }}
+      LIBRARY: USER.LOAD
+```
+
+## Inputs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `src` | string | l'un des deux | — | Chemin local d'un fichier template. |
+| `content` | string | l'un des deux | — | Template inline. |
+| `dst` | string | non | — | Chemin de sortie. Si absent, résultat dans `outputs.result`. |
+| `vars` | object | non | — | Variables passées au template. |
+| `delims` | array(2) | non | `['<<', '>>']` | Délimiteurs custom. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `result` | string | Le résultat rendu, si `dst` non fourni. |
+| `bytesWritten` | integer | Si `dst` fourni. |
+| `dst` | string | Chemin de sortie (résolu). |
+
+## Fonctions disponibles
+
+**Built-in `text/template`** : `if`, `else`, `range`, `with`, `printf`, comparaisons (`eq`, `ne`, `lt`, etc.).
+
+**Sprig (sous-ensemble)** :
+
+| Catégorie | Fonctions |
+|-----------|-----------|
+| Strings | `upper`, `lower`, `title`, `trim`, `replace`, `contains`, `hasPrefix`, `hasSuffix`, `quote`, `indent` |
+| Maths | `add`, `sub`, `mul`, `div`, `mod`, `max`, `min` |
+| Listes | `list`, `first`, `last`, `rest`, `reverse`, `uniq`, `join`, `split` |
+| Date | `now`, `date`, `dateInZone` |
+| Défaut | `default`, `coalesce`, `empty` |
+| Encodage | `b64enc`, `b64dec` |
+| Crypto | `sha256sum`, `sha1sum` |
+
+## Exemples
+
+**Génération de JCL paramétré**
+
+Fichier `templates/compile.jcl.tmpl` :
+
+```jcl
+//<<.JOBNAME>>  JOB (ACCT),'BUILD <<.MODULE>>',CLASS=A
+//STEP1    EXEC PGM=IGYCRCTL<<if .OPTIMIZE>>,PARM='OPT'<<end>>
+//SYSLIN   DD DSN=<<.LIBRARY>>(<<.MODULE>>),DISP=SHR
+<<range .COPYBOOKS>>//COPY    DD DSN=<<.>>,DISP=SHR
+<<end>>
+```
+
+```yaml
+- uses: template
+  with:
+    src: ./templates/compile.jcl.tmpl
+    dst: ./build/jcl/compile-${{ inputs.module }}.jcl
+    vars:
+      JOBNAME: BUILD${{ inputs.module }}
+      MODULE: ${{ inputs.module }}
+      LIBRARY: USER.LOAD
+      OPTIMIZE: ${{ inputs.optimize }}
+      COPYBOOKS:
+        - USER.COPYBOOK.COMMON
+        - USER.COPYBOOK.UTILS
+```
+
+**Template inline pour message**
+
+```yaml
+- id: render
+  uses: template
+  with:
+    content: |
+      Build report for <<.module>>
+      RC: <<.rc>>
+      Duration: <<.duration>>
+      <<if .warnings>>
+      Warnings: <<.warnings>>
+      <<end>>
+    vars:
+      module: ${{ inputs.module }}
+      rc: ${{ steps.compile.outputs.rc }}
+      duration: ${{ steps.compile.outputs.duration }}
+      warnings: ${{ steps.compile.outputs.warnings }}
+```
+
+## Erreurs courantes
+
+- **Variable non définie** — rendue comme `<no value>` par défaut.
+- **Délimiteurs `<<` qui collisionnent** — rare mais possible si le template source contient `<<`. Changer les délimiteurs via `delims: ['[[', ']]']`.
+
+## FAQ
+
+**Pourquoi délimiteurs `<<` `>>` par défaut ?**
+Évite la collision visuelle avec `${{ }}` du workflow. Les utilisateurs Go peuvent revenir à `{{ }}` via `delims: ['{{', '}}']`.

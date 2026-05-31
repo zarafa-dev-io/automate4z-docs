@@ -1,0 +1,114 @@
+---
+sidebar_position: 7
+title: notify
+---
+
+# `notify` — Notifications
+
+Envoie une notification via un canal configuré. v1.0 : email (SMTP) et webhook générique. v1.x : Slack, Teams.
+
+```yaml
+- uses: notify
+  with:
+    channel: email
+    target: ['team@example.com']
+    title: Build terminé
+    message: 'Module ${{ inputs.module }} compilé avec succès'
+```
+
+## Inputs communs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `channel` | string | oui | — | `email`, `webhook` (v1.0). `slack`, `teams` (v1.x). |
+| `target` | string ou array | oui | — | Destination (email, URL webhook...). |
+| `title` | string | non | — | Titre du message. |
+| `message` | string | oui | — | Corps du message. Markdown autorisé selon le channel. |
+| `severity` | string | non | `info` | `info`, `success`, `warning`, `error`. |
+| `fields` | array | non | — | Champs structurés `[{ name, value }]`. |
+| `links` | array | non | — | Liens additionnels `[{ text, url }]`. |
+
+### Channel `email` — champs additionnels
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `from` | string | Expéditeur (défaut depuis profil). |
+| `cc` | array | Destinataires en copie. |
+| `bcc` | array | Destinataires en copie cachée. |
+| `format` | string | `text` ou `html` (défaut `text`). |
+| `attachments` | array | Liste de chemins locaux à joindre. |
+
+### Channel `webhook` — champs additionnels
+
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `method` | string | `POST` | Méthode HTTP. |
+| `headers` | object | — | Headers additionnels. |
+| `bodyTemplate` | string | JSON auto | Template Go pour customiser le corps. |
+
+:::note
+Les credentials SMTP et URLs de webhook sont externalisés dans le profil actif (`~/.automate4z/profiles/<name>.yml`), jamais dans le YAML.
+:::
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `sent` | boolean | `true` si la notification a été envoyée. |
+| `messageId` | string | Identifiant du message si disponible. |
+
+## Exemples
+
+**Email en fin de workflow**
+
+```yaml
+- uses: notify
+  if: ${{ always() }}
+  with:
+    channel: email
+    target: ['team-mainframe@corp.com']
+    title: 'Build ${{ inputs.module }}: ${{ workflow.status }}'
+    message: |
+      Workflow terminé en ${{ workflow.duration }}.
+    severity: ${{ workflow.status == 'success' ? 'success' : 'error' }}
+    fields:
+      - { name: Module, value: '${{ inputs.module }}' }
+      - { name: LPAR, value: '${{ inputs.lpar }}' }
+      - { name: RC, value: '${{ steps.compile.outputs.rc }}' }
+```
+
+**Email avec pièce jointe**
+
+```yaml
+- uses: notify
+  with:
+    channel: email
+    target: ['dev@corp.com']
+    title: 'Build report ${{ inputs.module }}'
+    message: 'Voir le rapport en pièce jointe.'
+    format: html
+    attachments:
+      - ./build/report.html
+```
+
+**Webhook avec corps custom**
+
+```yaml
+- uses: notify
+  with:
+    channel: webhook
+    target: https://chat.corp.com/api/v1/messages
+    title: ignored
+    message: ignored
+    bodyTemplate: |
+      {
+        "text": "Build <<.workflow.name>> finished with status <<.workflow.status>>",
+        "channel": "mainframe-builds"
+      }
+```
+
+## Erreurs courantes
+
+- **Email rejeté par le serveur SMTP** — authentification ou TLS mal configurés dans le profil.
+- **Webhook 4xx** — format attendu différent. Utiliser `bodyTemplate` pour adapter.
+- **Pièce jointe trop grosse** — la plupart des serveurs SMTP limitent à 10-25 MiB. Préférer un lien vers l'artefact.

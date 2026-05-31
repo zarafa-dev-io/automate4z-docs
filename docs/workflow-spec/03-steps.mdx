@@ -1,0 +1,139 @@
+---
+sidebar_position: 3
+title: Steps
+---
+
+# Steps
+
+Un step est l'unité d'exécution d'un workflow.
+
+```yaml
+steps:
+  - id: compile
+    name: Compile COBOL
+    uses: zos-jobs
+    needs: [upload-sources]
+    if: ${{ inputs.optimize == true }}
+    timeout: 5m
+    continueOnError: false
+    with:
+      jcl: ./jcl/compile.jcl
+      lpar: ${{ inputs.lpar }}
+      vars:
+        MODULE: ${{ inputs.module }}
+      expectRC: 0
+```
+
+## Champs d'un step
+
+| Champ | Type | Requis | Version | Description |
+|-------|------|--------|---------|-------------|
+| `id` | string | oui | v1.0 | Identifiant unique. Regex `^[a-z][a-z0-9-]{0,62}[a-z0-9]$`. |
+| `name` | string | non | v1.0 | Libellé affiché dans les logs. Défaut : `id`. |
+| `uses` | string | oui (sauf `run`) | v1.0 | Nom d'une tâche built-in. |
+| `run` | string | oui (sauf `uses`) | v1.0 | Raccourci pour `uses: shell`. |
+| `with` | objet | non | v1.0 | Paramètres passés à la tâche. |
+| `needs` | string ou tableau | non | v1.0 | Dépendances explicites. |
+| `if` | string (expression) | non | v1.0 | Condition d'exécution. |
+| `env` | objet | non | v1.0 | Variables d'env spécifiques au step. |
+| `timeout` | duration | non | v1.0 | Durée max (ex: `30s`, `5m`, `1h`). |
+| `continueOnError` | boolean | non | v1.0 | Si `true`, l'échec ne stoppe pas le workflow. |
+| `retry` | objet | non | v1.x | Politique de retry. |
+| `forEach` | expression | non | v1.x | Itération sur une collection. |
+| `as` | string | non | v1.x | Nom de la variable d'itération (défaut `item`). |
+| `parallel` | integer | non | v1.x | Parallélisme des itérations. |
+
+## `uses` vs `run`
+
+```yaml
+# Forme longue
+- id: hello
+  uses: shell
+  with:
+    run: echo hello
+
+# Forme courte équivalente
+- id: hello
+  run: echo hello
+```
+
+`run` est un sucre syntaxique pour `uses: shell` avec `with.run`.
+
+## Dépendances : `needs`
+
+Par défaut, les steps s'exécutent **séquentiellement** dans l'ordre du tableau. Avec `needs`, le runtime construit un DAG :
+
+```yaml
+steps:
+  - id: a
+    run: echo a
+  - id: b
+    needs: [a]
+    run: echo b
+  - id: c
+    needs: [a]      # b et c parallélisables après a
+    run: echo c
+  - id: d
+    needs: [b, c]   # d attend b ET c
+    run: echo d
+```
+
+Un cycle dans `needs` provoque un échec au lint.
+
+## Outputs d'un step
+
+Les outputs d'une tâche sont accessibles via `${{ steps.<id>.outputs.<nom> }}`.
+
+**Outputs implicites** disponibles pour tout step :
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `exitCode` | integer | Code de retour de la tâche. |
+| `duration` | string | Durée d'exécution (format Go, ex : `1.23s`). |
+| `status` | string | `success`, `failure`, `skipped`, `cancelled`. |
+
+## Retry (v1.x)
+
+```yaml
+- id: flaky
+  uses: http
+  retry:
+    maxAttempts: 3
+    backoff: exponential   # constant | linear | exponential
+    initialDelay: 2s
+    maxDelay: 30s
+    on: [failure, timeout]
+```
+
+## Itération : `forEach` (v1.x)
+
+Exécute la tâche une fois par élément d'une collection :
+
+```yaml
+- id: list-modules
+  uses: fs
+  with:
+    action: list
+    path: ./src
+    pattern: '**/*.cbl'
+
+- id: compile-all
+  needs: [list-modules]
+  forEach: ${{ steps.list-modules.outputs.entries }}
+  as: file
+  parallel: 4
+  uses: zos-jobs
+  with:
+    jcl: ./jcl/compile.jcl
+    vars:
+      MODULE: ${{ file.name }}
+```
+
+Les outputs du step deviennent un array dont chaque élément correspond à une itération :
+
+```yaml
+- id: report
+  needs: [compile-all]
+  run: |
+    echo "Compiled ${{ length(steps.compile-all.outputs) }} modules"
+```

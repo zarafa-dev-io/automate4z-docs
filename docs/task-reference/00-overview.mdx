@@ -1,0 +1,66 @@
+---
+sidebar_position: 0
+title: Vue d'ensemble
+---
+
+# Tâches built-in
+
+automate4z embarque **16 tâches built-in** dans le binaire `a4z`, toutes **Stable**.
+
+## Catalogue
+
+### Tâches locales et utilitaires (13)
+
+| Tâche | Domaine |
+|-------|---------|
+| [`shell`](shell) | Exécution de commandes locales |
+| [`http`](http) | Appels HTTP(S) |
+| [`fs`](fs) | Filesystem local (mkdir, remove, copy, move, write, read, exists, list) |
+| [`archive`](archive) | Création d'archives (tar, tar.gz, zip…) |
+| [`extract`](extract) | Extraction d'archives avec protection zip-slip |
+| [`wait`](wait) | Attente de condition externe (5 types) |
+| [`notify`](notify) | Notifications (email + webhook) |
+| [`git`](git) | Opérations Git locales (clone, checkout, status, log) |
+| [`assert`](assert) | Vérification de condition |
+| [`json-query`](json-query) | Requête jq sur JSON |
+| [`yaml-query`](yaml-query) | Requête jq sur YAML |
+| [`template`](template) | Rendu Go template + Sprig |
+| [`convert`](convert) | Conversion entre formats (JSON, YAML, CSV) |
+
+### Tâches z/OS (3)
+
+| Tâche | Domaine |
+|-------|---------|
+| [`zos-jobs`](zos-jobs) | Soumission JCL via z/OSMF, monitoring, SYSOUT |
+| [`zos-datasets`](zos-datasets) | Opérations sur PDS, séquentiels, USS |
+| [`z-deps`](z-deps) | Résolution de dépendances pour COBOL/copybooks |
+
+:::note
+Les tâches `zos-db2` et `zos-endevor`, initialement envisagées, sont **différées** : elles ne peuvent pas être validées sans accès à une LPAR d'entreprise équipée. En attendant, un accès DB2 passe par un job batch (`zos-jobs`) ou `shell`.
+:::
+
+---
+
+## Conventions transverses
+
+### Outputs implicites
+
+Chaque step expose automatiquement ces trois outputs, quelle que soit la tâche :
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `exitCode` | integer | Code de retour (0 = succès) |
+| `duration` | string | Durée d'exécution (format Go, ex : `1.23s`) |
+| `status` | string | `success`, `failure`, `skipped` ou `cancelled` |
+
+### Chemins relatifs
+
+Les chemins relatifs sont résolus par rapport au **répertoire du fichier workflow YAML**, pas au CWD du processus `a4z`.
+
+### Profils z/OS
+
+Les tâches `zos-*` et `z-deps` résolvent leurs credentials via le profil indiqué par `--profile <name>` au lancement, ou le profil `default` (`~/.automate4z/profiles/<name>.yml` + trousseau natif pour les secrets).
+
+### Encodages
+
+Les transferts entre poste local (UTF-8) et z/OS (EBCDIC, généralement IBM-1047) sont gérés par les adaptateurs avec un défaut sensé et une option `encoding` explicite.

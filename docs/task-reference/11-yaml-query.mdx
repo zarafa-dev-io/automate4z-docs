@@ -1,0 +1,58 @@
+---
+sidebar_position: 11
+title: yaml-query
+---
+
+# `yaml-query` — Requête jq sur YAML
+
+Symétrique de `json-query` pour YAML. Implémentation : parse le YAML en JSON puis applique gojq. Syntaxe et options identiques à `json-query`.
+
+```yaml
+- uses: yaml-query
+  with:
+    src: ./z-manifest.yaml
+    query: '.dependencies[].name'
+```
+
+## Inputs
+
+Identiques à [`json-query`](json-query), sauf que `src` et `content` attendent du YAML.
+
+## Outputs
+
+Identiques à `json-query`.
+
+## Exemples
+
+**Lire les dépendances d'un manifeste**
+
+```yaml
+- id: deps
+  uses: yaml-query
+  with:
+    src: ./z-manifest.yaml
+    query: '.dependencies | map({ name, version })'
+
+- run: echo "Dependencies: ${{ steps.deps.outputs.count }}"
+```
+
+**Extraire un champ d'un workflow GitHub Actions**
+
+```yaml
+- uses: yaml-query
+  with:
+    src: ./.github/workflows/ci.yml
+    query: '.jobs.test.runs-on'
+    output: scalar
+    raw: true
+```
+
+## Erreurs courantes
+
+- **YAML mal formé** — tabs vs spaces, indentation incohérente. Tester avec `yamllint` au préalable.
+- **Multi-documents YAML** — `yaml-query` traite uniquement le premier document.
+
+## FAQ
+
+**Anchors et aliases YAML ?**
+Résolus lors du parsing. La requête voit le YAML déréférencé.

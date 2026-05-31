@@ -1,0 +1,79 @@
+---
+sidebar_position: 5
+title: extract
+---
+
+# `extract` — Extraction d'archives
+
+Décompresse une archive locale dans un répertoire de destination. Protection zip-slip activée par défaut.
+
+```yaml
+- uses: extract
+  with:
+    src: ./deps.tar.gz
+    dst: ./vendor
+```
+
+## Inputs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `src` | string | oui | — | Chemin de l'archive. |
+| `dst` | string | oui | — | Répertoire de destination. |
+| `format` | string | non | `auto` | `auto`, `tar`, `tar.gz`, `tar.bz2`, `tar.xz`, `zip`. |
+| `stripComponents` | integer | non | `0` | Comme `tar --strip-components`. |
+| `overwrite` | boolean | non | `true` | Écraser les fichiers existants. |
+| `safelyExtract` | boolean | non | `true` | Protection zip-slip : refuse les entrées qui sortent de `dst`. |
+| `includes` | array | non | — | Extraire uniquement les entrées matchant ces patterns. |
+| `excludes` | array | non | — | Ignorer les entrées matchant ces patterns. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `dst` | string | Répertoire de destination (résolu). |
+| `filesProcessed` | integer | Nombre de fichiers extraits. |
+| `bytesProcessed` | integer | Taille totale extraite. |
+
+## Exemples
+
+**Extraire une dépendance**
+
+```yaml
+- uses: extract
+  with:
+    src: ./deps/common-copybooks-2.0.0.tar.gz
+    dst: ./vendor/copybooks
+    stripComponents: 1
+```
+
+**Extraire un zip GitHub**
+
+```yaml
+- uses: extract
+  with:
+    src: ./downloads/repo-main.zip
+    dst: ./repo
+    stripComponents: 1
+    overwrite: true
+```
+
+**Extraction sélective**
+
+```yaml
+- uses: extract
+  with:
+    src: ./bundle.tar.gz
+    dst: ./extracted
+    includes: ['src/**/*.cbl', 'copybook/**']
+    excludes: ['**/*.test.cbl']
+```
+
+## Erreurs courantes
+
+- **`stripComponents` trop élevé** — produit un répertoire vide. Vérifier la structure de l'archive avec `tar -tzf` au préalable.
+- **Format `auto` qui se trompe** — magic bytes ambigus. Spécifier `format:` explicitement en cas de doute.
+
+:::warning
+Ne désactiver `safelyExtract` que si vous faites confiance absolument à la source de l'archive. Cette protection couvre la vulnérabilité zip-slip.
+:::

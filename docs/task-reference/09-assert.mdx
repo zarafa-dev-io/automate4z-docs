@@ -1,0 +1,77 @@
+---
+sidebar_position: 9
+title: assert
+---
+
+# `assert` — Vérification de condition
+
+Vérifie une condition et fait échouer le step proprement si elle n'est pas remplie. Remplace les `shell: '[ $X = $Y ] || exit 1'` illisibles et non portables.
+
+```yaml
+- uses: assert
+  with:
+    condition: ${{ steps.compile.outputs.rc == 0 }}
+    message: 'Compilation failed with RC=${{ steps.compile.outputs.rc }}'
+```
+
+## Inputs
+
+| Champ | Type | Requis | Description |
+|-------|------|--------|-------------|
+| `condition` | string ou boolean | oui | Expression évaluée. Step échoue si fausse. |
+| `message` | string | non | Message d'erreur affiché si la condition est fausse. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `passed` | boolean | `true` si la condition est vraie. |
+
+## Exemples
+
+**Vérifier un RC**
+
+```yaml
+- uses: assert
+  with:
+    condition: ${{ steps.compile.outputs.rc == 0 }}
+    message: 'Compilation failed (RC=${{ steps.compile.outputs.rc }})'
+```
+
+**Vérifier qu'un fichier existe**
+
+```yaml
+- id: check-output
+  uses: fs
+  with:
+    action: exists
+    path: ./build/output.bin
+
+- uses: assert
+  with:
+    condition: ${{ steps.check-output.outputs.exists == true }}
+    message: 'Build output is missing'
+```
+
+**Soft assert (warning, pas échec)**
+
+```yaml
+- uses: assert
+  continueOnError: true
+  with:
+    condition: ${{ steps.tests.outputs.warnings == 0 }}
+    message: 'Warning: ${{ steps.tests.outputs.warnings }} test warnings (non-blocking)'
+```
+
+## Erreurs courantes
+
+- **Expression mal écrite** — `${{ steps.X.outputs.Y == 0 }}` vs `${{ steps.X.outputs.Y == "0" }}`. Vérifier le type retourné par le step.
+- **`condition` toujours vraie** — oubli des délimiteurs `${{ }}`. `condition: steps.X.outputs.Y == 0` (sans `${{ }}`) est une string littérale = vraie.
+
+## FAQ
+
+**Différence avec `if:` ?**
+`if: false` → step `skipped`. `assert` avec condition fausse → step `failure`. Choisir selon la sémantique attendue.
+
+**Comment faire un assert non bloquant ?**
+`continueOnError: true` sur le step. Le step reste marqué `failure`, mais les steps suivants s'exécutent.

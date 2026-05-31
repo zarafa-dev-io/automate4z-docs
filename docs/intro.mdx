@@ -1,47 +1,73 @@
 ---
 sidebar_position: 1
+title: Introduction
 ---
 
-# Tutorial Intro
+# automate4z
 
-Let's discover **Docusaurus in less than 5 minutes**.
+**automate4z** est un orchestrateur de workflows open-source qui efface la frontière entre exécution mainframe z/OS et exécution locale.
 
-## Getting Started
+Distribué comme **un binaire unique `a4z`** (Linux / macOS / Windows × amd64 / arm64), sans runtime à installer côté utilisateur. Les workflows sont définis en YAML avec une syntaxe inspirée de GitHub Actions, adaptée au mainframe.
 
-Get started by **creating a new site**.
+---
 
-Or **try Docusaurus immediately** with **[docusaurus.new](https://docusaurus.new)**.
+## Pourquoi automate4z ?
 
-### What you'll need
+Les équipes COBOL en transition DevOps font face à un problème récurrent : leurs outils CI/CD modernes ne savent pas parler au mainframe. Chaque pipeline contient des scripts maison qui soumettent des jobs JCL, téléchargent des datasets et vérifient des return codes — le tout sans type safety ni observabilité.
 
-- [Node.js](https://nodejs.org/en/download/) version 20.0 or above:
-  - When installing Node.js, you are recommended to check all checkboxes related to dependencies.
+automate4z résout ça avec un seul fichier YAML, un seul binaire, et une interface cohérente pour les deux mondes.
 
-## Generate a new site
+---
 
-Generate a new Docusaurus site using the **classic template**.
+## Fonctionnalités clés
 
-The classic template will automatically be added to your project after you run the command:
+| Fonctionnalité | Description |
+|----------------|-------------|
+| **16 tâches built-in** | Shell, HTTP, filesystem, archives, notifications, requêtes JSON/YAML, templates, z/OS jobs et datasets |
+| **Exécution DAG** | Dépendances entre steps résolues automatiquement ; steps indépendants en parallèle |
+| **Expressions `$\{{ }}`** | Interpolation de contexte (inputs, outputs, env, runner) avec fonctions built-in |
+| **Profils z/OSMF** | Connexion aux LPARs via profils Zowe ou variables d'env ; secrets jamais dans le YAML |
+| **Lint + Plan** | Valide un workflow et affiche le plan d'exécution sans l'exécuter |
+| **Binaire unique** | Pas de Node.js, Python ou Java requis — un seul exécutable cross-platform |
 
-```bash
-npm init docusaurus@latest my-website classic
+---
+
+## Exemple minimal
+
+```yaml
+apiVersion: automate4z/v1
+kind: Workflow
+name: hello-world
+
+inputs:
+  name:
+    type: string
+    default: World
+
+steps:
+  - id: greet
+    run: echo "Hello, ${{ inputs.name }}!"
 ```
 
-You can type this command into Command Prompt, Powershell, Terminal, or any other integrated terminal of your code editor.
-
-The command also installs all necessary dependencies you need to run Docusaurus.
-
-## Start your site
-
-Run the development server:
-
 ```bash
-cd my-website
-npm run start
+a4z run hello.yml --input name=Alice
 ```
 
-The `cd` command changes the directory you're working with. In order to work with your newly created Docusaurus site, you'll need to navigate the terminal there.
+---
 
-The `npm run start` command builds your website locally and serves it through a development server, ready for you to view at http://localhost:3000/.
+## Structure de la documentation
 
-Open `docs/intro.md` (this page) and edit some lines: the site **reloads automatically** and displays your changes.
+| Section | Contenu |
+|---------|---------|
+| [Guide de démarrage](getting-started) | Installation, premier workflow, commandes, exemples |
+| [Référence CLI](cli-reference) | `a4z run`, `lint`, `plan`, `version` et tous leurs flags |
+| [Spécification Workflow](workflow-spec/01-structure) | Format YAML complet : inputs, steps, expressions, secrets |
+| [Référence des tâches](task-reference/00-overview) | Documentation détaillée des 16 tâches built-in |
+
+---
+
+## Statut du projet
+
+Le projet est en phase **pré-MVP**. Les tâches locales et utilitaires (Q1/Q2) sont stables. Les tâches z/OS (`zos-jobs`, `zos-datasets`, `z-deps`) sont en cours de livraison (Q3).
+
+Voir le [dépôt GitHub](https://github.com/zarafa-dev-io/automate4z) pour le changelog et les issues.

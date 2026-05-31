@@ -1,0 +1,94 @@
+---
+sidebar_position: 10
+title: json-query
+---
+
+# `json-query` — Requête jq sur JSON
+
+Exécute une requête jq contre du JSON. Indispensable pour extraire des valeurs depuis des réponses d'API, des fichiers de config, ou des outputs de tâches précédentes.
+
+Implémentation : `github.com/itchyny/gojq` (jq pur Go, syntaxe identique au jq officiel).
+
+```yaml
+- uses: json-query
+  with:
+    src: ./api-response.json
+    query: '.modules[].name'
+```
+
+## Inputs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `src` | string | l'un des deux | — | Chemin local d'un fichier JSON. |
+| `content` | string ou object | l'un des deux | — | Contenu JSON inline ou déjà parsé (object). |
+| `query` | string | oui | — | Expression jq. |
+| `output` | string | non | `array` | `array` (tous), `first` (premier), `scalar` (un seul résultat attendu). |
+| `raw` | boolean | non | `false` | Retourne les strings sans guillemets (équivalent `jq -r`). |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `result` | any | Résultat de la requête. |
+| `count` | integer | Nombre de résultats. |
+
+## Exemples
+
+**Extraire une liste depuis une réponse d'API**
+
+```yaml
+- id: get-modules
+  uses: http
+  with:
+    url: https://api.corp/modules
+
+- id: names
+  uses: json-query
+  with:
+    content: ${{ steps.get-modules.outputs.body }}
+    query: '.modules | map(select(.active == true)) | .[].name'
+    output: array
+
+- run: echo "Active modules: ${{ steps.names.outputs.result }}"
+```
+
+**Lire une version depuis package.json**
+
+```yaml
+- id: version
+  uses: json-query
+  with:
+    src: ./package.json
+    query: '.version'
+    output: scalar
+    raw: true
+
+- run: echo "Building version ${{ steps.version.outputs.result }}"
+```
+
+**Filtrage complexe**
+
+```yaml
+- uses: json-query
+  with:
+    content: ${{ steps.fetch.outputs.body }}
+    query: |
+      .jobs
+      | map(select(.status == "failed"))
+      | map({ name, rc, duration })
+    output: array
+```
+
+## Erreurs courantes
+
+- **`output: scalar` mais plusieurs résultats** — échec explicite. Utiliser `output: first` si on veut juste le premier.
+- **Content déjà parsé vs string** — si `content` est une string, le parser tente JSON.parse d'abord. Si c'est déjà un object, il l'utilise directement.
+
+## FAQ
+
+**Syntaxe jq complète supportée ?**
+Oui, gojq implémente jq complet.
+
+**Performance sur gros JSON ?**
+gojq charge tout en mémoire. Pour > 100 MiB, préférer un step `shell: jq ...`.

@@ -11,32 +11,33 @@ type FeatureItem = {
 
 const FeatureList: FeatureItem[] = [
   {
-    title: 'Easy to Use',
+    title: 'Un binaire, deux mondes',
     Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
     description: (
       <>
-        Docusaurus was designed from the ground up to be easily installed and
-        used to get your website up and running quickly.
+        Un seul binaire <code>a4z</code> orchestre des tâches locales
+        (shell, HTTP, filesystem) et des tâches z/OS (jobs JCL, datasets, copybooks)
+        dans le même workflow YAML.
       </>
     ),
   },
   {
-    title: 'Focus on What Matters',
+    title: 'Workflows en YAML',
     Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
     description: (
       <>
-        Docusaurus lets you focus on your docs, and we&apos;ll do the chores. Go
-        ahead and move your docs into the <code>docs</code> directory.
+        Syntaxe inspirée de GitHub Actions, adaptée au mainframe. DAG automatique,
+        expressions <code>{'${{ }}'}</code>, inputs typés, contrôle fin de chaque step.
       </>
     ),
   },
   {
-    title: 'Powered by React',
+    title: '16 tâches built-in',
     Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
     description: (
       <>
-        Extend or customize your website layout by reusing React. Docusaurus can
-        be extended while reusing the same header and footer.
+        Shell, HTTP, fs, archive, wait, notify, git, assert, json-query, template,
+        convert, zos-jobs, zos-datasets, z-deps — et aucune dépendance à installer.
       </>
     ),
   },

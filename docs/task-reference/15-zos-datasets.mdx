@@ -1,0 +1,228 @@
+---
+sidebar_position: 15
+title: zos-datasets
+---
+
+# `zos-datasets` — Datasets MVS et USS
+
+Opérations sur datasets MVS z/OS (séquentiels et partitionnés PDS/PDSE) **et fichiers USS** (Unix System Services) : upload, download, création, suppression, listing, chmod, copie, renommage.
+
+```yaml
+- uses: zos-datasets
+  with:
+    action: upload
+    localPath: ./src/cobol
+    dataset: USER.MYAPP.SRC
+    lpar: dev01
+```
+
+## Inputs communs
+
+| Champ | Type | Requis | Description |
+|-------|------|--------|-------------|
+| `action` | string | oui | `upload`, `download`, `create`, `delete`, `list`, `exists`, `copy`, `rename`, `mkdir`, `chmod`. |
+| `lpar` | string | non | Profil LPAR cible (défaut : profil actif). |
+
+**Discrimination MVS vs USS :** si `ussPath` est présent → cible USS. Si `dataset` est présent → dataset MVS. Les actions `mkdir` et `chmod` sont USS-only.
+
+## Actions MVS
+
+### `upload`
+
+| Champ | Type | Requis | Description |
+|-------|------|--------|-------------|
+| `dataset` | string | oui | Dataset cible. Pour un PDS, chaque fichier local devient un membre. |
+| `localPath` | string | oui | Fichier ou répertoire local. |
+| `encoding` | string | non | Codepage source. Vide = conversion EBCDIC automatique. |
+| `binary` | boolean | non | `true` = transfert binaire sans conversion. Défaut `false`. |
+
+**Nommage des membres** : extension supprimée → majuscules → caractères invalides supprimés → tronqué à 8 → préfixe `A` si le premier caractère est un chiffre.
+
+### `download`
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `dataset` | string | oui — dataset ou membre (`USER.SRC(MEMBER)`) |
+| `localPath` | string | oui — destination locale |
+| `encoding` | string | non |
+| `binary` | boolean | non |
+
+### `create`
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `dataset` | string | oui | — | Nom du dataset (44 chars max). |
+| `datasetType` | string | non | `seq` | `seq`, `pds` ou `pdse`. |
+| `recfm` | string | non | `FB` | `FB`, `VB`, `F`, `U`, `FBA`, `VBA`. |
+| `lrecl` | integer | non | `80` | Longueur d'enregistrement. |
+| `primary` | integer | non | `1` | Allocation primaire en pistes. |
+| `secondary` | integer | non | `1` | Allocation secondaire en pistes. |
+| `dirblk` | integer | non | — | Blocs de répertoire (pour PDS). |
+
+### `delete`
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `dataset` | string | oui — dataset ou `PDS(MEMBER)` |
+
+### `list`
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `pattern` | string | l'un des deux — pattern ISPF (`USER.MYAPP.*`) |
+| `membersOf` | string | l'un des deux — lister les membres de ce PDS |
+
+### `copy` / `rename`
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `source` | string | oui |
+| `target` | string | oui |
+
+### `exists`
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `dataset` | string | oui — dataset, membre (`USER.PDS(MBR)`) |
+
+## Actions USS
+
+### `upload` / `download`
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `ussPath` | string | oui — chemin USS absolu (commence par `/`) |
+| `localPath` | string | oui |
+| `encoding` | string | non |
+| `binary` | boolean | non |
+
+### `mkdir`
+
+| Champ | Type | Requis | Défaut |
+|-------|------|--------|--------|
+| `ussPath` | string | oui | — |
+| `recursive` | boolean | non | `true` |
+| `mode` | string | non | `0755` |
+
+### `delete` (USS)
+
+| Champ | Type | Requis | Défaut |
+|-------|------|--------|--------|
+| `ussPath` | string | oui | — |
+| `recursive` | boolean | non | `false` |
+
+### `exists` (USS)
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `ussPath` | string | oui |
+
+### `chmod`
+
+| Champ | Type | Requis | Défaut |
+|-------|------|--------|--------|
+| `ussPath` | string | oui | — |
+| `mode` | string | oui | — — `0755`, `u+x`... |
+| `recursive` | boolean | non | `false` |
+
+## Outputs
+
+| Action | Outputs |
+|--------|---------|
+| `upload` MVS | `bytesTransferred`, `membersWritten` |
+| `upload` USS | `bytesTransferred` |
+| `download` | `bytesTransferred`, `localPath` |
+| `create` | `created` (bool) |
+| `delete` | `deleted` (bool) |
+| `list` MVS | `datasets` ou `members` (array), `count` |
+| `list` USS | `entries` (array), `count` |
+| `exists` MVS | `exists` (bool), `datasetType` |
+| `exists` USS | `exists` (bool), `type` (`file`, `dir`, `symlink`) |
+| `mkdir` | `created` (bool), `ussPath` |
+| `chmod` | `success` (bool) |
+
+## Erreurs typées
+
+| Erreur | Description |
+|--------|-------------|
+| `ErrInvalidDatasetName` | Nom de dataset/membre qui viole les règles MVS. |
+| `ErrDatasetNotFound` | Dataset ou membre introuvable. |
+| `ErrDatasetExists` | `create` sur un dataset déjà existant. |
+| `ErrMemberNotFound` | Membre PDS introuvable. |
+| `ErrMemberNameCollision` | Deux fichiers locaux produisent le même nom de membre. |
+| `ErrTransferFailed` | Échec upload ou download. |
+| `ErrUssPathNotFound` | Chemin USS introuvable. |
+| `ErrUssPermission` | Opération USS refusée par RACF. |
+
+## Exemples
+
+**Upload d'un répertoire COBOL vers un PDS**
+
+```yaml
+- uses: zos-datasets
+  with:
+    action: upload
+    localPath: ./src/cobol
+    dataset: USER.MYAPP.SRC
+```
+
+**Download d'un membre PDS**
+
+```yaml
+- uses: zos-datasets
+  with:
+    action: download
+    dataset: USER.MYAPP.SRC(CUSTOMER)
+    localPath: ./review/CUSTOMER.cbl
+```
+
+**Allocation conditionnelle d'un PDS**
+
+```yaml
+- id: check-src
+  uses: zos-datasets
+  with:
+    action: exists
+    dataset: USER.MYAPP.SRC
+
+- id: create-src
+  if: ${{ steps.check-src.outputs.exists == false }}
+  uses: zos-datasets
+  with:
+    action: create
+    dataset: USER.MYAPP.SRC
+    datasetType: pds
+    recfm: FB
+    lrecl: 80
+    primary: 10
+    secondary: 5
+    dirblk: 20
+```
+
+**Déploiement d'un script sur USS**
+
+```yaml
+- uses: zos-datasets
+  with:
+    action: mkdir
+    ussPath: /u/Z79863/deploy
+    recursive: true
+
+- uses: zos-datasets
+  with:
+    action: upload
+    ussPath: /u/Z79863/deploy/run.sh
+    localPath: src/run.sh
+
+- uses: zos-datasets
+  with:
+    action: chmod
+    ussPath: /u/Z79863/deploy/run.sh
+    mode: "0755"
+```
+
+## Erreurs courantes
+
+- **Collision de noms de membres** — `customer.cbl` et `customer.jcl` donnent tous les deux `CUSTOMER`. Renommer un des fichiers côté local.
+- **Encodage corrompu** — un load module uploadé sans `binary: true` est mutilé par la conversion EBCDIC. Toujours `binary: true` pour les load modules.
+- **`ErrDatasetExists`** — `create` échoue si le dataset existe déjà. Utiliser `exists` avant ou `continueOnError`.

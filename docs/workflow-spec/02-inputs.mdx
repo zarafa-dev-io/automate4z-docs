@@ -1,0 +1,84 @@
+---
+sidebar_position: 2
+title: Inputs
+---
+
+# Inputs
+
+Les `inputs` typent les paramètres d'entrée du workflow. Ils sont fournis :
+- en CLI : `a4z run wf.yml --input module=COBPRG01`
+- en fichier : `a4z run wf.yml --inputs-file values.yml`
+- en **CLI interactive** (v1.x) : `a4z run` détecte les inputs manquants et les demande
+- depuis un workflow appelant (v1.x)
+
+```yaml
+inputs:
+  module:
+    type: string
+    required: true
+    description: Nom du module COBOL à compiler.
+    help: |
+      Le module doit exister dans USER.SRC ou être référencé
+      dans le manifeste z-deps.
+
+  lpar:
+    type: string
+    default: dev01
+    enum: [dev01, dev02, int01]
+    description: LPAR z/OS cible.
+
+  optimize:
+    type: boolean
+    default: false
+
+  retries:
+    type: integer
+    default: 3
+    minimum: 0
+    maximum: 10
+```
+
+## Types supportés
+
+| Type | Valeurs | Contraintes additionnelles | Version |
+|------|---------|---------------------------|---------|
+| `string` | chaîne | `enum`, `pattern`, `minLength`, `maxLength` | v1.0 |
+| `integer` | entier signé 64 bits | `minimum`, `maximum`, `enum` | v1.0 |
+| `number` | flottant 64 bits | `minimum`, `maximum` | v1.0 |
+| `boolean` | true/false | — | v1.0 |
+| `array` | liste typée | `items: { type: ... }` | v1.x |
+| `object` | mapping libre | `properties`, `required` | v1.x |
+
+## Champs de métadonnées
+
+| Champ | Type | Version | Description |
+|-------|------|---------|-------------|
+| `description` | string | v1.0 | Description courte, affichée à côté du champ. |
+| `help` | string (markdown) | v1.0 | Documentation longue. |
+| `label` | string | v1.x | Texte affiché à la place du nom technique. |
+| `group` | string | v1.x | Organisation en sections du formulaire. |
+| `order` | integer | v1.x | Ordre d'affichage. Sans `order`, c'est l'ordre de déclaration. |
+| `sensitive` | boolean | v1.x | Saisie masquée (style password). |
+| `when` | string (expression) | v1.x | Input affiché uniquement si la condition est vraie. |
+
+## Référencement
+
+Un input est référencé par `${{ inputs.<nom> }}` partout où une expression est admise.
+
+## CLI interactive (v1.x)
+
+En v1.x, si `a4z run` est exécuté sans fournir tous les inputs requis et que le terminal est interactif, `a4z` demande les valeurs manquantes :
+
+```
+$ a4z run deploy.yml
+? Module à compiler: COBPRG01
+? LPAR cible: (use arrows)
+  > dev01
+    dev02
+    prod01
+? Confirmer l'optimisation ? (y/N) y
+```
+
+En contexte non-interactif (CI/CD, pipe), l'absence d'input requis produit une erreur immédiate.
+
+Le flag `--non-interactive` force ce comportement même en TTY.

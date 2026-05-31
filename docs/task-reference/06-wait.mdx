@@ -1,0 +1,107 @@
+---
+sidebar_position: 6
+title: wait
+---
+
+# `wait` — Attente de condition
+
+Attend qu'une condition externe soit remplie avant de continuer le workflow. Utile pour synchroniser avec des systèmes asynchrones.
+
+```yaml
+- uses: wait
+  with:
+    condition: file-exists
+    path: ./signals/build-ready.txt
+    timeout: 10m
+```
+
+## Inputs communs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `condition` | string | oui | — | `file-exists`, `file-absent`, `http-ok`, `tcp-port`, `expression`. |
+| `pollInterval` | duration | non | `5s` | Intervalle entre vérifications. |
+| `timeout` | duration | non | `10m` | Durée max d'attente. |
+| `failOnTimeout` | boolean | non | `true` | Si `false`, succède avec `outputs.met = false` au timeout. |
+
+### Condition `file-exists` / `file-absent`
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `path` | string | oui — chemin à surveiller (globs supportés) |
+
+### Condition `http-ok`
+
+| Champ | Type | Requis | Défaut |
+|-------|------|--------|--------|
+| `url` | string | oui | — |
+| `expectStatus` | integer/array | non | `200-299` |
+| `method` | string | non | `GET` |
+| `headers` | object | non | — |
+
+### Condition `tcp-port`
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `host` | string | oui |
+| `port` | integer | oui |
+
+### Condition `expression`
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `expression` | string | oui — expression `${{ ... }}` évaluée à chaque poll |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `met` | boolean | `true` si la condition a été satisfaite. |
+| `attempts` | integer | Nombre de vérifications effectuées. |
+| `waited` | duration | Durée totale d'attente. |
+
+## Exemples
+
+**Attendre un fichier signal**
+
+```yaml
+- uses: wait
+  with:
+    condition: file-exists
+    path: ./signals/upstream-done.txt
+    timeout: 1h
+    pollInterval: 30s
+```
+
+**Attendre qu'une API démarre**
+
+```yaml
+- uses: wait
+  with:
+    condition: http-ok
+    url: https://api.example.com/health
+    expectStatus: 200
+    timeout: 5m
+    pollInterval: 10s
+```
+
+**Attendre une condition métier**
+
+```yaml
+- id: poll-status
+  uses: http
+  with:
+    url: https://api/status
+
+- uses: wait
+  with:
+    condition: expression
+    expression: ${{ steps.poll-status.outputs.body.ready == true }}
+    timeout: 30m
+    pollInterval: 1m
+```
+
+## Erreurs courantes
+
+- **Timeout trop court** — pour des batchs nocturnes, utiliser `timeout: 12h` ou plus.
+- **`pollInterval` agressif** — `pollInterval: 100ms` sur une condition HTTP martèle le endpoint. Rester à 5-30s.

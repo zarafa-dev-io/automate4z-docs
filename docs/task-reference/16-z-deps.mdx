@@ -1,0 +1,120 @@
+---
+sidebar_position: 16
+title: z-deps
+---
+
+# `z-deps` — Résolution de dépendances COBOL
+
+Résolveur de dépendances pour modules COBOL et copybooks, inspiré de Maven/Cargo. Lit un manifeste de dépendances, résout les versions (lockfile-first ou update), télécharge les artefacts depuis GitHub releases (ou registre compatible).
+
+```yaml
+- uses: z-deps
+  with:
+    manifest: ./z-manifest.yaml
+    lockfile: ./z-deps.lock
+```
+
+## Inputs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `manifest` | string | non | `./z-manifest.yaml` | Chemin du manifeste. |
+| `lockfile` | string | non | `./z-deps.lock` | Chemin du lockfile. |
+| `update` | boolean | non | `false` | Recalcule les versions et réécrit le lockfile. Sinon, mode strict : échec si lockfile manquant ou désynchronisé. |
+| `cache` | string | non | `~/.automate4z/cache/z-deps` | Répertoire de cache local. |
+| `registry` | string ou array | non | depuis manifeste | Override des registries. |
+| `targetDir` | string | non | `./.a4z/deps/` | Répertoire d'extraction des artefacts. |
+| `verify` | boolean | non | `true` | Vérification des checksums. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `resolved` | array | `[ { name, version, source, integrity, path } ]` |
+| `cacheHits` | integer | Nombre de dépendances servies depuis le cache. |
+| `downloaded` | integer | Nombre de dépendances téléchargées. |
+| `lockfileChanged` | boolean | `true` si `update: true` a modifié le lockfile. |
+| `targetDir` | string | Chemin réel d'extraction (résolu). |
+
+## Format du manifeste `z-manifest.yaml`
+
+```yaml
+name: myapp
+version: 1.4.0
+dependencies:
+  - name: common-copybooks
+    version: ^2.0.0
+    source: github.com/example/cobol-common
+  - name: utils
+    version: '=1.3.2'
+    source: github.com/example/cobol-utils
+registries:
+  - github.com
+```
+
+Stratégie de résolution : **nearest-wins** en cas de conflit transitif.
+
+:::note
+`version: latest` ou `*` est refusé au lint. Seuls les ranges SemVer explicites ou les versions épinglées sont acceptés.
+:::
+
+## Exemples
+
+**Résolution stricte en CI**
+
+```yaml
+- uses: z-deps
+  with:
+    manifest: ./z-manifest.yaml
+    lockfile: ./z-deps.lock
+    # update: false par défaut → échec si lockfile désynchronisé
+```
+
+**Update local (équivalent `npm install`)**
+
+```yaml
+- uses: z-deps
+  with:
+    update: true
+```
+
+**Workflow complet : résoudre, uploader, compiler**
+
+```yaml
+steps:
+  - id: deps
+    uses: z-deps
+    with:
+      manifest: ./z-manifest.yaml
+
+  - id: upload-deps
+    needs: [deps]
+    uses: zos-datasets
+    with:
+      action: upload
+      localPath: ${{ steps.deps.outputs.targetDir }}/copybooks
+      dataset: USER.MYAPP.COPYBOOK
+
+  - id: compile
+    needs: [upload-deps]
+    uses: zos-jobs
+    with:
+      jcl: ./jcl/compile.jcl
+      vars:
+        MODULE: ${{ inputs.module }}
+        COPYLIB: USER.MYAPP.COPYBOOK
+```
+
+## Erreurs courantes
+
+- **`lockfile out of sync with manifest`** — un dev a modifié le manifeste sans régénérer le lockfile. Lancer avec `update: true` en local et committer le `.lock`.
+- **`integrity mismatch`** — l'artefact téléchargé n'a pas le checksum attendu. Soit corruption transitoire (relancer), soit l'artefact a été republié avec le même tag.
+- **`source not reachable`** — registre GitHub inaccessible. Vérifier la connectivité et les tokens pour les repos privés.
+
+## FAQ
+
+**Le binaire `a4z` peut-il fonctionner offline ?**
+Oui si le cache local contient toutes les dépendances et que le lockfile est valide.
+
+**Pourquoi GitHub releases comme source canonique ?**
+Universellement disponible, gratuit, supporte les artefacts binaires + checksums. Évite de monter un registre dédié.

@@ -1,0 +1,91 @@
+---
+sidebar_position: 1
+title: shell
+---
+
+# `shell` — Exécution locale
+
+Exécute une commande locale sur le poste qui fait tourner `a4z`. C'est l'échappatoire universelle : tout ce qui est faisable en ligne de commande peut être enchaîné dans un workflow.
+
+```yaml
+- uses: shell
+  with:
+    run: echo "hello"
+```
+
+Forme courte équivalente :
+
+```yaml
+- run: echo "hello"
+```
+
+## Inputs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `run` | string | oui | — | Commande(s) à exécuter. Multiline autorisé. |
+| `workdir` | string | non | dir du workflow | Répertoire courant pour la commande. |
+| `shell` | string | non | `bash` (Unix), `pwsh` (Windows) | Interpréteur : `bash`, `sh`, `pwsh`, `cmd`, `python`. |
+| `env` | object | non | — | Variables d'env additionnelles. |
+| `stripAnsi` | boolean | non | `false` | Supprime les codes ANSI de la sortie capturée. |
+| `maxOutputBytes` | integer | non | `10485760` (10 MiB) | Taille max capturée par flux. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `stdout` | string | Sortie standard capturée. |
+| `stderr` | string | Sortie d'erreur. |
+| `exitCode` | integer | Code de retour (override l'implicite). |
+
+## Exemples
+
+**Commande simple**
+
+```yaml
+- id: greet
+  run: echo "Build of ${{ inputs.module }} starting"
+```
+
+**Script multiline avec variables**
+
+```yaml
+- id: build
+  uses: shell
+  with:
+    shell: bash
+    workdir: ./src
+    env:
+      OPTIMIZE: 'true'
+    run: |
+      set -euo pipefail
+      echo "Building in $(pwd)"
+      make all OPTIMIZE=$OPTIMIZE
+      ls -la build/
+```
+
+**Récupération d'un output pour un step suivant**
+
+```yaml
+- id: count
+  run: find . -name '*.cbl' | wc -l
+
+- id: report
+  needs: [count]
+  run: echo "Found ${{ steps.count.outputs.stdout }} COBOL files"
+```
+
+## Erreurs courantes
+
+- **`exit status 127`** — commande introuvable dans le `PATH`. Vérifier `which <cmd>` ou utiliser un chemin absolu.
+- **Variables non substituées** — `set -euo pipefail` couplé à une variable non définie échoue silencieusement. Toujours définir les variables dans `env:` ou les exporter.
+- **Sortie tronquée** — un step verbeux peut dépasser `maxOutputBytes`. Écrire vers un fichier et utiliser un step de parsing dédié.
+- **Différences de quoting Windows/Unix** — privilégier `shell: bash` pour des workflows portables.
+
+## FAQ
+
+**Comment passer des secrets sans qu'ils apparaissent dans les logs ?**
+Référencer via `${{ secrets.X }}` ; le runtime masque automatiquement la valeur. Ne jamais faire `echo ${{ secrets.X }}`.
+
+**Puis-je lancer un démon longue durée ?**
+`shell` attend la fin du process. Pour du fire-and-forget, utiliser `nohup … &` avec un PID écrit dans un fichier.

@@ -1,0 +1,80 @@
+---
+sidebar_position: 4
+title: archive
+---
+
+# `archive` — Création d'archives
+
+Crée une archive (tar, tar.gz, zip, etc.) à partir d'un fichier ou d'un répertoire local.
+
+```yaml
+- uses: archive
+  with:
+    format: tar.gz
+    src: ./build
+    dst: ./artifacts/build.tar.gz
+```
+
+## Inputs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `format` | string | oui | — | `tar`, `tar.gz`, `tar.bz2`, `tar.xz`, `zip`. |
+| `src` | string ou array | oui | — | Fichier, répertoire ou liste de sources. |
+| `dst` | string | oui | — | Chemin de l'archive à créer. |
+| `excludes` | array | non | — | Patterns glob à exclure. |
+| `includes` | array | non | — | Patterns glob à inclure (filtre positif). |
+| `compressionLevel` | integer | non | `6` | Niveau de compression 1-9 (formats compressés). |
+| `preservePaths` | string | non | `relative` | `relative`, `absolute`, `basename`. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `dst` | string | Chemin de l'archive créée. |
+| `bytesProcessed` | integer | Taille totale des fichiers sources. |
+| `filesProcessed` | integer | Nombre de fichiers archivés. |
+| `archiveSize` | integer | Taille finale de l'archive. |
+
+## Exemples
+
+**Archive simple d'un répertoire**
+
+```yaml
+- uses: archive
+  with:
+    format: tar.gz
+    src: ./build
+    dst: ./artifacts/release-${{ inputs.version }}.tar.gz
+    excludes: ['*.tmp', '*.log', '.DS_Store']
+```
+
+**Archiver plusieurs sources**
+
+```yaml
+- uses: archive
+  with:
+    format: zip
+    src:
+      - ./src
+      - ./docs
+      - ./README.md
+    dst: ./artifacts/source-bundle.zip
+```
+
+**Load modules COBOL**
+
+```yaml
+- uses: archive
+  with:
+    format: tar.gz
+    src: ./build/loadlib
+    dst: ./artifacts/loadlib-${{ inputs.version }}.tar.gz
+    includes: ['*.bin']
+    compressionLevel: 9
+```
+
+## Erreurs courantes
+
+- **`format` mal orthographié** — seuls les 5 formats listés sont supportés. `tgz` ou `gz` seuls ne sont pas acceptés : toujours préfixer `tar.`.
+- **`preservePaths: absolute`** — peut produire des paths longs qui posent problème sous Windows (limite 260 chars). Préférer `relative`.

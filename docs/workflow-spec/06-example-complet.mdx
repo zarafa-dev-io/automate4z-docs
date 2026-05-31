@@ -1,0 +1,165 @@
+---
+sidebar_position: 6
+title: Exemple complet
+---
+
+# Exemple complet
+
+Pipeline complète pour un module COBOL : résolution des dépendances, upload des sources, compilation, tests zUnit, publication SonarQube, notification.
+
+```yaml
+apiVersion: automate4z/v1
+kind: Workflow
+name: build-and-test-cobol-module
+description: |
+  Pipeline complète pour un module COBOL : résolution dépendances,
+  upload sources, compilation, tests unitaires zUnit, publication
+  SonarQube, notification de fin.
+
+a4z:
+  version: '>=1.0 <2'
+
+inputs:
+  module:
+    type: string
+    required: true
+    pattern: '^COBPRG[0-9]{2}$'
+    description: Nom du module COBOL à compiler.
+  lpar:
+    type: string
+    default: dev01
+    enum: [dev01, dev02]
+    description: LPAR z/OS cible.
+  publishSonar:
+    type: boolean
+    default: true
+
+env:
+  TZ: Europe/Paris
+
+defaults:
+  zos-jobs:
+    lpar: ${{ inputs.lpar }}
+    expectRC: 0
+  zos-datasets:
+    lpar: ${{ inputs.lpar }}
+
+steps:
+  - id: resolve-deps
+    name: Résolution des dépendances
+    uses: z-deps
+    with:
+      manifest: ./z-manifest.yaml
+      lockfile: ./z-deps.lock
+
+  - id: prepare-build-dir
+    name: Préparation du dossier de build
+    uses: fs
+    with:
+      action: mkdir
+      path: ./build/${{ inputs.module }}
+      recursive: true
+
+  - id: upload-sources
+    name: Upload des sources
+    needs: [resolve-deps]
+    uses: zos-datasets
+    with:
+      action: upload
+      localPath: ./src/cobol
+      dataset: USER.${{ inputs.module }}.SRC
+
+  - id: compile
+    name: Compilation
+    needs: [upload-sources]
+    uses: zos-jobs
+    with:
+      jcl: ./jcl/compile.jcl
+      vars:
+        MODULE: ${{ inputs.module }}
+
+  - id: check-rc
+    name: Vérification du RC
+    needs: [compile]
+    uses: assert
+    with:
+      condition: ${{ steps.compile.outputs.rc <= 4 }}
+      message: 'Compilation failed with RC=${{ steps.compile.outputs.rc }}'
+
+  - id: zunit
+    name: Tests unitaires zUnit
+    needs: [check-rc]
+    uses: zos-jobs
+    with:
+      jcl: ./jcl/zunit.jcl
+      vars:
+        MODULE: ${{ inputs.module }}
+
+  - id: publish-sonar
+    name: Publication SonarQube
+    needs: [zunit]
+    if: ${{ inputs.publishSonar == true }}
+    run: |
+      sonar-scanner \
+        -Dsonar.projectKey=${{ inputs.module }} \
+        -Dsonar.token=${{ secrets.SONAR_TOKEN }}
+
+  - id: notify-done
+    name: Notification de fin
+    needs: [zunit]
+    if: ${{ always() }}
+    uses: notify
+    with:
+      channel: email
+      target: ['team-mainframe@corp.com']
+      title: 'Build ${{ inputs.module }} - ${{ workflow.status }}'
+      message: |
+        Le pipeline a terminé en ${{ workflow.duration }}.
+        RC compilation : ${{ steps.compile.outputs.rc }}
+      severity: ${{ workflow.status == 'success' ? 'success' : 'error' }}
+      fields:
+        - { name: Module, value: '${{ inputs.module }}' }
+        - { name: LPAR, value: '${{ inputs.lpar }}' }
+        - { name: Build date, value: '${{ now("datetime") }}' }
+
+outputs:
+  jobId:
+    description: ID du job de compilation
+    value: ${{ steps.compile.outputs.jobId }}
+  rc:
+    value: ${{ steps.compile.outputs.rc }}
+```
+
+## Exécution
+
+```bash
+# Valider
+a4z lint build-and-test-cobol-module.yml
+
+# Afficher le plan
+a4z plan build-and-test-cobol-module.yml --input module=COBPRG01
+
+# Lancer
+a4z run build-and-test-cobol-module.yml \
+  --input module=COBPRG01 \
+  --input lpar=dev01 \
+  --input publishSonar=true
+```
+
+## Plan d'exécution généré
+
+```
+Workflow: build-and-test-cobol-module
+Inputs:
+  module        COBPRG01  (provided)
+  lpar          dev01     (default)
+  publishSonar  true      (provided)
+
+Execution plan:
+  Level 1:  resolve-deps, prepare-build-dir
+  Level 2:  upload-sources
+  Level 3:  compile
+  Level 4:  check-rc
+  Level 5:  zunit
+  Level 6:  publish-sonar, notify-done
+```

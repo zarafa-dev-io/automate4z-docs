@@ -1,0 +1,199 @@
+---
+sidebar_position: 14
+title: zos-jobs
+---
+
+# `zos-jobs` — Jobs JCL via z/OSMF
+
+Soumet un job JCL sur une LPAR z/OS via z/OSMF, attend sa complétion, récupère le SYSOUT. C'est la tâche centrale du build mainframe.
+
+```yaml
+- uses: zos-jobs
+  with:
+    action: submit
+    jcl: src/compile.jcl
+    expectRC: 4
+    timeout: 10m
+```
+
+## Inputs communs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `action` | string | oui | — | `submit`, `status`, `cancel`, `list`, `output`, `files`. |
+| `lpar` | string | non | profil actif | Profil LPAR cible. |
+
+### Action `submit`
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `jcl` | string | oui | — | Chemin fichier `.jcl`, JCL inline, ou `//USER.JCL(MBR)` (dataset z/OS). |
+| `vars` | object | non | — | Substitution `<< >>` dans le JCL (côté client). |
+| `wait` | boolean | non | `true` | Attendre la fin du job. `false` = fire-and-forget. |
+| `expectRC` | integer ou `"*"` | non | `0` | RC max acceptable. `4` accepte 0 et 4. `"*"` accepte tout. |
+| `timeout` | duration | non | `30m` | Durée max d'attente. |
+| `pollInterval` | duration | non | `5s` | Fréquence de polling du statut. |
+| `fetchOutput` | boolean | non | `false` | Récupérer le SYSOUT à la fin. |
+| `outputDdName` | string | non | — | DD spécifique à récupérer (sinon tout le SYSOUT). |
+
+**Détection de la source JCL :**
+- Commence par `//` sans espace → référence dataset z/OS (soumis server-side)
+- Contient des sauts de ligne → JCL inline
+- Sinon → chemin de fichier local
+
+### Actions `status` / `cancel`
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `jobId` | string | oui — ex : `JOB12345` |
+| `jobName` | string | non — désambiguïsation |
+
+### Action `list`
+
+| Champ | Type | Requis | Défaut |
+|-------|------|--------|--------|
+| `owner` | string | non | `*` |
+| `prefix` | string | non | `*` |
+| `maxJobs` | integer | non | `100` |
+
+### Action `output`
+
+Récupère le SYSOUT d'un job déjà terminé.
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `jobId` | string | oui | — | ID du job. |
+| `ddName` | string | non | — | DD spécifique (`SYSPRINT`, `SYSOUT`...). Absent = tout le SYSOUT concaténé. |
+| `localPath` | string | non | — | Écrire la sortie dans ce fichier local. |
+| `encoding` | string | non | — | Encodage de lecture (ex. `IBM-1047`). |
+| `maxBytes` | integer | non | `52428800` (50 MB) | Limite de lecture. |
+
+### Action `files`
+
+Liste les spool files (DDs) disponibles d'un job terminé.
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `jobId` | string | oui |
+
+## Outputs
+
+| Action | Outputs |
+|--------|---------|
+| `submit` | `jobId`, `jobName`, `jobStatus`, `rc`, `completed` |
+| `status` | `jobId`, `jobName`, `jobStatus`, `rc`, `completed` |
+| `cancel` | `cancelled` (bool), `jobId` |
+| `list` | `jobs` (array), `count` |
+| `output` | `content` (string), `bytesRead`, `localPath` |
+| `files` | `files` (array de `{ ddName, stepName, recordCount, byteCount }`), `count` |
+
+## Sémantique du RC
+
+| `retcode` z/OSMF | Interprétation |
+|------------------|----------------|
+| `CC 0000` | RC 0 — succès |
+| `CC 0004` | RC 4 — warning acceptable |
+| `CC 0008` | RC 8 — erreur |
+| `ABEND S0C7` | Abend système → `ErrJobAbend` |
+| `JCL ERROR` | Erreur JCL → `ErrJclError` |
+
+Les abends et erreurs JCL sont **toujours des échecs**, sauf `expectRC: "*"` qui accepte tout.
+
+## Erreurs typées
+
+| Erreur | Description |
+|--------|-------------|
+| `ErrJclSubmitFailed` | La soumission a échoué. |
+| `ErrJclError` | z/OS a détecté une erreur JCL. |
+| `ErrJobAbend` | Le job a terminé en abend. |
+| `ErrJobTimeout` | Délai `timeout` dépassé avant fin du job. |
+| `ErrRCExceeded` | RC dépasse `expectRC`. |
+| `ErrJobNotFound` | `jobId` introuvable. |
+
+## Exemples
+
+**Compilation avec substitution de variables**
+
+```yaml
+- id: compile
+  uses: zos-jobs
+  with:
+    action: submit
+    jcl: ./jcl/compile.jcl
+    vars:
+      MODULE: ${{ inputs.module }}
+      LOADLIB: USER.LOAD
+    expectRC: 4
+    timeout: 15m
+```
+
+**JCL inline**
+
+```yaml
+- uses: zos-jobs
+  with:
+    action: submit
+    jcl: |
+      //<<.Hlq>>CPL JOB CLASS=A
+      //STEP EXEC PGM=IGYCRCTL
+      //SYSIN DD DSN=<<.Hlq>>.COBOL.SRC(<<.Pgm>>),DISP=SHR
+    vars:
+      Hlq: "Z79863"
+      Pgm: "CUSTOMER"
+    expectRC: 4
+```
+
+**Récupérer et analyser le SYSPRINT**
+
+```yaml
+- id: compile
+  uses: zos-jobs
+  with:
+    action: submit
+    jcl: ./jcl/compile.jcl
+    fetchOutput: true
+    outputDdName: SYSPRINT
+    expectRC: 4
+
+- id: check-listing
+  uses: shell
+  with:
+    run: |
+      if echo "${{ steps.compile.outputs.sysout }}" | grep -q "IGYPA3020-I"; then
+        echo "Warning IGYPA3020-I détecté"
+      fi
+```
+
+**Fire-and-forget puis attente manuelle**
+
+```yaml
+- id: submit-long
+  uses: zos-jobs
+  with:
+    action: submit
+    jcl: ./jcl/long-batch.jcl
+    wait: false
+
+# ... autres steps en parallèle ...
+
+- id: wait-result
+  uses: zos-jobs
+  with:
+    action: status
+    jobId: "${{ steps.submit-long.outputs.jobId }}"
+```
+
+## Erreurs courantes
+
+- **`JCL ERROR`** — erreur de syntaxe JCL. Inspecter le SYSOUT téléchargé.
+- **`expectRC: 0` qui échoue avec RC=4** — beaucoup de compilations COBOL retournent 4 sur warning. Préférer `expectRC: 4` pour les compilations.
+- **Substitution `&VAR.` qui ne s'opère pas** — la substitution utilise `<< >>` comme délimiteurs, pas `&VAR.`. Vérifier la syntaxe.
+- **Job en queue indéfiniment** — `maxWait` atteint. Vérifier la classe JOB et la disponibilité de l'initiateur.
+
+## FAQ
+
+**Pourquoi la substitution est-elle côté client ?**
+Les symbolic parameters JES ne marchent que dans les procédures (PROC), pas dans le JCL principal. Une substitution cohérente côté client est plus prévisible.
+
+**Puis-je récupérer plusieurs DDs séparément ?**
+Oui. Utiliser l'action `files` pour lister les DDs disponibles, puis `output` avec `ddName` pour chacun.

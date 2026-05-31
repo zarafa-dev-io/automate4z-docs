@@ -1,0 +1,125 @@
+---
+sidebar_position: 8
+title: git
+---
+
+# `git` — Opérations Git locales
+
+Opérations sur un dépôt Git local. v1.0 : actions de **lecture** uniquement (`clone`, `checkout`, `status`, `log`). Les actions d'écriture (`commit`, `tag`, `push`...) arrivent en v1.x.
+
+Implémentation : wrapper de la **CLI `git`** locale (pas `go-git`), pour une compatibilité 100 % avec l'expérience habituelle des utilisateurs.
+
+```yaml
+- uses: git
+  with:
+    action: clone
+    url: https://github.com/org/repo.git
+    path: ./vendor/repo
+```
+
+## Inputs communs
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `action` | string | oui — `clone`, `checkout`, `status`, `log` |
+
+### Action `clone`
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `url` | string | oui | — | URL du dépôt. |
+| `path` | string | oui | — | Répertoire de destination. |
+| `ref` | string | non | `HEAD` | Branche, tag ou SHA. |
+| `depth` | integer | non | — | Shallow clone (`--depth N`). |
+| `submodules` | boolean | non | `false` | Cloner les sous-modules récursivement. |
+
+### Action `checkout`
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `path` | string | oui — répertoire du dépôt |
+| `ref` | string | oui — branche, tag ou SHA |
+| `force` | boolean | non — défaut `false` |
+
+### Action `status`
+
+| Champ | Type | Requis |
+|-------|------|--------|
+| `path` | string | oui — répertoire du dépôt |
+
+### Action `log`
+
+| Champ | Type | Requis | Défaut |
+|-------|------|--------|--------|
+| `path` | string | oui | — |
+| `range` | string | non | `HEAD` — ex : `v1.0..HEAD`, `--since=1week` |
+| `count` | integer | non | `100` |
+| `format` | string | non | Format structuré par défaut |
+
+## Outputs
+
+| Action | Outputs |
+|--------|---------|
+| `clone` | `path`, `commit` (SHA), `branch` |
+| `checkout` | `commit`, `branch`, `ref` |
+| `status` | `clean` (bool), `modified` (array), `untracked` (array), `staged` (array), `branch` |
+| `log` | `commits` (array de `{ sha, author, email, date, subject, body }`), `count` |
+
+## Exemples
+
+**Cloner un tag précis**
+
+```yaml
+- uses: git
+  with:
+    action: clone
+    url: https://github.com/example/cobol-common.git
+    path: ./vendor/cobol-common
+    ref: v2.1.0
+    depth: 1
+```
+
+**Vérifier que le repo est propre avant un build**
+
+```yaml
+- id: status
+  uses: git
+  with:
+    action: status
+    path: .
+
+- uses: assert
+  with:
+    condition: ${{ steps.status.outputs.clean == true }}
+    message: 'Working tree must be clean before build'
+```
+
+**Générer un changelog**
+
+```yaml
+- id: changelog
+  uses: git
+  with:
+    action: log
+    path: .
+    range: v${{ inputs.previousVersion }}..HEAD
+    count: 1000
+
+- uses: template
+  with:
+    content: |
+      # Changelog ${{ inputs.version }}
+
+      <<range .commits>>
+      - <<.subject>> (<<slice .sha 0 7>>)
+      <<end>>
+    vars:
+      commits: ${{ steps.changelog.outputs.commits }}
+    dst: ./CHANGELOG.md
+```
+
+## Erreurs courantes
+
+- **`fatal: Authentication failed`** — préférer un token via env var (`GH_TOKEN`) ou le credential helper git.
+- **`pathspec did not match any file`** sur checkout — `ref` inexistant.
+- **`status.clean` false alors qu'on s'y attend** — fichiers générés par un build précédent. Ajouter à `.gitignore`.

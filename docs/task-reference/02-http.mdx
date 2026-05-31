@@ -1,0 +1,107 @@
+---
+sidebar_position: 2
+title: http
+---
+
+# `http` — Appel HTTP(S)
+
+Effectue une requête HTTP(S) et expose la réponse. Utile pour notifier un dashboard, déclencher un webhook, interroger une API métier ou appeler un service interne.
+
+```yaml
+- uses: http
+  with:
+    method: POST
+    url: https://api.example.com/notify
+    body: { module: COBPRG01 }
+```
+
+## Inputs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `method` | string | non | `GET` | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`. |
+| `url` | string | oui | — | URL complète. |
+| `headers` | object | non | — | Headers HTTP. |
+| `body` | string ou object | non | — | Corps. Si object : sérialisé en JSON et `Content-Type: application/json` ajouté. |
+| `bodyFile` | string | non | — | Chemin local vers un fichier corps (exclusif avec `body`). |
+| `queryParams` | object | non | — | Paramètres ajoutés à l'URL. |
+| `expectStatus` | integer, string ou array | non | `200-299` | Codes acceptés. Ex : `200`, `"2xx"`, `[200, 201]`. |
+| `timeout` | duration | non | `30s` | Timeout réseau. |
+| `followRedirects` | boolean | non | `true` | Suivre les 3xx. |
+| `tls` | object | non | — | Options TLS (voir ci-dessous). |
+
+**Sous-objet `tls`** :
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `insecureSkipVerify` | boolean | Désactive la vérif du certificat. Dev only, warning au lint. |
+| `caFile` | string | Chemin vers une CA custom. |
+| `clientCertFile` | string | Certificat client (mTLS). |
+| `clientKeyFile` | string | Clé client (mTLS). |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `status` | integer | Code HTTP de la réponse. |
+| `body` | string ou object | Corps de la réponse. Auto-parsé en object si `Content-Type: application/json`. |
+| `headers` | object | Headers de réponse (clés en minuscules). |
+
+## Exemples
+
+**Notification simple**
+
+```yaml
+- id: notify
+  uses: http
+  with:
+    method: POST
+    url: https://hooks.example.com/builds
+    headers:
+      Authorization: Bearer ${{ secrets.WEBHOOK_TOKEN }}
+    body:
+      project: ${{ inputs.module }}
+      status: success
+      rc: ${{ steps.compile.outputs.rc }}
+```
+
+**GET avec query params et parsing JSON**
+
+```yaml
+- id: fetch-version
+  uses: http
+  with:
+    url: https://api.example.com/modules/${{ inputs.module }}
+    queryParams:
+      env: prod
+
+- id: use-version
+  needs: [fetch-version]
+  run: echo "Current version is ${{ steps.fetch-version.outputs.body.version }}"
+```
+
+**mTLS contre une API interne**
+
+```yaml
+- uses: http
+  with:
+    method: POST
+    url: https://internal-api.corp/events
+    tls:
+      caFile: /etc/corp/ca.pem
+      clientCertFile: ${{ env.CLIENT_CERT }}
+      clientKeyFile: ${{ env.CLIENT_KEY }}
+    body:
+      type: build-complete
+```
+
+## Erreurs courantes
+
+- **`x509: certificate signed by unknown authority`** — CA absente du trust store système. Fournir `tls.caFile`.
+- **Body JSON envoyé en `text/plain`** — si `headers.Content-Type` est fixé manuellement, automate4z ne l'écrase pas. Le retirer pour laisser l'auto-détection.
+- **Variable de body non sérialisée** — un objet dans `body` est JSON. Pour du form-urlencoded, utiliser `bodyFile` ou construire la string à la main.
+
+## FAQ
+
+**Comment streamer un téléchargement volumineux ?**
+La v1 ne streame pas : tout le body est mis en mémoire. Pour un gros transfert, préférer `shell` avec `curl -o` ou attendre la v1.x qui ajoutera `responseFile`.

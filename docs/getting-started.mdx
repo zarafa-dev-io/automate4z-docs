@@ -1,0 +1,361 @@
+---
+sidebar_position: 2
+title: Guide de démarrage
+---
+
+# Guide de démarrage
+
+> **Statut :** pre-1.0 — les fonctionnalités de cette page sont stables dans le MVP. Les fonctionnalités marquées **(v1.x)** ou **(v2)** sont planifiées mais pas encore disponibles.
+
+## Installation
+
+### Télécharger le binaire (recommandé)
+
+Rendez-vous sur la [page Releases](https://github.com/zarafa-dev-io/automate4z/releases) et téléchargez l'archive correspondant à votre plateforme :
+
+| Plateforme | Archive |
+|------------|---------|
+| Linux x86-64 | `automate4z_<version>_linux_amd64.tar.gz` |
+| Linux ARM64 | `automate4z_<version>_linux_arm64.tar.gz` |
+| macOS x86-64 | `automate4z_<version>_darwin_amd64.tar.gz` |
+| macOS Apple Silicon | `automate4z_<version>_darwin_arm64.tar.gz` |
+| Windows x86-64 | `automate4z_<version>_windows_amd64.zip` |
+| Windows ARM64 | `automate4z_<version>_windows_arm64.zip` |
+
+Vérifiez l'intégrité avec le fichier de checksums :
+
+```bash
+sha256sum --check automate4z_checksums.txt
+```
+
+Extrayez et placez le binaire dans votre `PATH` :
+
+```bash
+tar -xzf automate4z_<version>_linux_amd64.tar.gz
+mv a4z /usr/local/bin/
+```
+
+### Compiler depuis les sources
+
+Requiert Go 1.22 ou supérieur.
+
+```bash
+git clone https://github.com/zarafa-dev-io/automate4z.git
+cd automate4z
+go build -o a4z ./cmd/a4z
+```
+
+### Vérifier l'installation
+
+```bash
+a4z version
+# a4z 0.x.y
+```
+
+---
+
+## Votre premier workflow
+
+Créez un fichier `hello.yml` :
+
+```yaml
+apiVersion: automate4z/v1
+kind: Workflow
+name: hello-world
+
+inputs:
+  name:
+    type: string
+    default: World
+
+steps:
+  - id: greet
+    run: echo "Hello, ${{ inputs.name }}!"
+
+  - id: done
+    run: echo "Workflow terminé."
+```
+
+Lancez-le :
+
+```bash
+a4z run hello.yml
+a4z run hello.yml --input name=Alice
+```
+
+Sortie attendue :
+
+```
+→ greet
+  Hello, World!
+✔ greet  0.12s
+
+→ done
+  Workflow terminé.
+✔ done  0.08s
+
+Summary:
+  ✔ greet  0.12s
+  ✔ done   0.08s
+```
+
+---
+
+## Structure d'un workflow
+
+Un workflow est un fichier YAML unique :
+
+```yaml
+apiVersion: automate4z/v1   # obligatoire
+kind: Workflow               # obligatoire
+name: mon-workflow           # obligatoire
+
+inputs:                      # optionnel
+  module:
+    type: string
+    required: true
+    default: COBPRG01
+
+env:                         # optionnel — variables d'env dans tous les steps
+  TZ: Europe/Paris
+
+defaults:                    # optionnel — valeurs with par défaut par type de tâche
+  shell:
+    shell: bash
+
+steps:                       # obligatoire, ≥ 1 step
+  - id: build
+    name: Compilation
+    run: make build
+
+outputs:                     # optionnel
+  exitCode:
+    value: ${{ steps.build.outputs.exitCode }}
+```
+
+### Champs d'un step
+
+| Champ | Requis | Description |
+|-------|--------|-------------|
+| `id` | oui | Identifiant unique dans le workflow |
+| `name` | non | Libellé affiché (défaut : `id`) |
+| `uses` | oui (sauf `run`) | Nom de la tâche built-in |
+| `run` | oui (sauf `uses`) | Raccourci pour `uses: shell` |
+| `with` | non | Paramètres de la tâche |
+| `needs` | non | Dépendances explicites |
+| `if` | non | Condition d'exécution |
+| `env` | non | Variables d'env spécifiques au step |
+| `timeout` | non | Durée max (ex : `30s`, `5m`, `1h`) |
+| `continueOnError` | non | `true` pour ignorer l'échec du step |
+
+---
+
+## Parallélisme et DAG
+
+### Comportement par défaut : séquentiel
+
+Sans `needs`, les steps s'exécutent dans **l'ordre de déclaration**.
+
+### Dépendances explicites avec `needs`
+
+```yaml
+steps:
+  - id: fetch
+    run: ./fetch-sources.sh
+
+  - id: compile
+    needs: [fetch]
+    run: make compile
+
+  - id: test
+    needs: [fetch]       # parallèle avec compile
+    run: make test
+
+  - id: publish
+    needs: [compile, test]   # attend les deux
+    run: make publish
+```
+
+`a4z plan` affiche les niveaux d'exécution :
+
+```
+Level 1:  fetch
+Level 2:  compile, test     ← parallèles
+Level 3:  publish
+```
+
+---
+
+## Contrôle d'exécution
+
+### Condition `if`
+
+```yaml
+# Exécuter uniquement en cas d'échec
+- id: notify-failure
+  if: ${{ failure() }}
+  uses: http
+  with:
+    method: POST
+    url: https://hooks.example.com/alert
+
+# Toujours exécuter (même après un échec)
+- id: cleanup
+  if: ${{ always() }}
+  run: rm -rf ./tmp
+
+# Condition sur un input
+- id: publish-sonar
+  if: ${{ inputs.publishSonar == true }}
+  run: sonar-scanner
+```
+
+### Timeout
+
+```yaml
+- id: long-job
+  timeout: 10m
+  run: ./batch.sh
+```
+
+### `continueOnError`
+
+```yaml
+- id: optional-step
+  continueOnError: true
+  run: ./generate-report.sh
+```
+
+---
+
+## Secrets
+
+Les secrets sont passés via des variables d'environnement préfixées `A4Z_SECRET_`. Leurs valeurs sont masquées (`***`) dans les logs.
+
+```bash
+export A4Z_SECRET_API_TOKEN="ghp_xxxxx"
+a4z run deploy.yml
+```
+
+Dans le workflow :
+
+```yaml
+- id: call-api
+  uses: http
+  with:
+    url: https://api.example.com/deploy
+    headers:
+      Authorization: Bearer ${{ env.A4Z_SECRET_API_TOKEN }}
+```
+
+---
+
+## Artefacts de run
+
+Chaque exécution crée un répertoire sous `.automate4z/runs/<runID>/` :
+
+```
+.automate4z/runs/
+└── 01HZ4K3Q2RXXXXXXXXXXXXX/
+    ├── workflow.yml
+    ├── inputs.yml
+    ├── run.json
+    └── steps/
+        ├── build/
+        │   ├── stdout.log
+        │   ├── stderr.log
+        │   └── outputs.json
+        └── test/
+            ├── stdout.log
+            ├── stderr.log
+            └── outputs.json
+```
+
+:::tip
+Ajoutez `.automate4z/` à votre `.gitignore` pour ne pas committer les artefacts de run.
+:::
+
+---
+
+## Codes de sortie
+
+| Code | Signification |
+|------|---------------|
+| `0` | Succès |
+| `1` | Échec métier (lint avec erreurs, run avec step en échec) |
+| `2` | Erreur interne (fichier introuvable, YAML invalide) |
+
+---
+
+## Exemple complet — Pipeline CI locale
+
+```yaml
+apiVersion: automate4z/v1
+kind: Workflow
+name: ci-local
+description: Pipeline CI locale — lint, build, tests, notification.
+
+inputs:
+  repo:
+    type: string
+    default: .
+  notify:
+    type: boolean
+    default: false
+
+steps:
+  - id: vet
+    uses: shell
+    with:
+      run: go vet ./...
+      workdir: ${{ inputs.repo }}
+
+  - id: lint
+    uses: shell
+    with:
+      run: golangci-lint run ./...
+      workdir: ${{ inputs.repo }}
+      timeout: 3m
+
+  - id: build
+    needs: [vet, lint]
+    run: go build -o ./bin/app ./cmd/app
+    timeout: 5m
+
+  - id: test
+    needs: [vet, lint]
+    uses: shell
+    with:
+      run: go test -race -count=1 ./...
+      workdir: ${{ inputs.repo }}
+      timeout: 10m
+
+  - id: notify-ok
+    needs: [build, test]
+    if: ${{ success() && inputs.notify == true }}
+    uses: http
+    with:
+      method: POST
+      url: https://hooks.example.com/ci
+      body:
+        status: success
+        workflow: ${{ workflow.name }}
+        runId: ${{ workflow.runId }}
+
+  - id: notify-fail
+    needs: [build, test]
+    if: ${{ failure() && inputs.notify == true }}
+    uses: http
+    with:
+      method: POST
+      url: https://hooks.example.com/ci
+      body:
+        status: failure
+        workflow: ${{ workflow.name }}
+```
+
+```bash
+a4z lint ci-local.yml
+a4z plan ci-local.yml --input notify=true
+a4z run  ci-local.yml --input notify=true --parallelism 2
+```
