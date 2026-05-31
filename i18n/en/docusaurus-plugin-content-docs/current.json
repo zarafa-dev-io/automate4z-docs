@@ -1,0 +1,10 @@
+{
+  "sidebar.tutorialSidebar.category.Référence des tâches": {
+    "message": "Task Reference",
+    "description": "The label for category Référence des tâches in sidebar tutorialSidebar"
+  },
+  "sidebar.tutorialSidebar.category.Spécification Workflow": {
+    "message": "Workflow Specification",
+    "description": "The label for category Spécification Workflow in sidebar tutorialSidebar"
+  }
+}

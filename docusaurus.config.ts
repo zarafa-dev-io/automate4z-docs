@@ -58,10 +58,6 @@ const config: Config = {
     },
     navbar: {
       title: 'automate4z',
-      logo: {
-        alt: 'automate4z logo',
-        src: 'img/logo.svg',
-      },
       items: [
         {
           type: 'docSidebar',
