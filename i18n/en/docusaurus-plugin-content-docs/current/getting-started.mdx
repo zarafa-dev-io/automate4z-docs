@@ -5,33 +5,31 @@ title: Getting started
 
 # Getting started
 
-> **v1.1.0** — all local and z/OS tasks are stable. Features marked **(v1.x)** or **(v2)** are planned but not yet available.
+> **v1.1.2** — all local and z/OS tasks are stable. Features marked **(v1.x)** or **(v2)** are planned but not yet available.
 
 ## Installation
 
 ### Download the binary (recommended)
 
-**Current version: v1.1.0**
+**Current version: v1.1.2** · [All releases](https://github.com/zarafa-dev-io/automate4z/releases)
+
+The links below always point to the **latest available release**.
 
 | Platform | Download |
 |----------|---------|
-| Linux x86-64 | [automate4z_1.1.0_linux_amd64.tar.gz](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_1.1.0_linux_amd64.tar.gz) |
-| Linux ARM64 | [automate4z_1.1.0_linux_arm64.tar.gz](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_1.1.0_linux_arm64.tar.gz) |
-| macOS x86-64 | [automate4z_1.1.0_darwin_amd64.tar.gz](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_1.1.0_darwin_amd64.tar.gz) |
-| macOS Apple Silicon | [automate4z_1.1.0_darwin_arm64.tar.gz](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_1.1.0_darwin_arm64.tar.gz) |
-| Windows x86-64 | [automate4z_1.1.0_windows_amd64.zip](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_1.1.0_windows_amd64.zip) |
-| Windows ARM64 | [automate4z_1.1.0_windows_arm64.zip](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_1.1.0_windows_arm64.zip) |
+| Linux x86-64 | [automate4z_latest_linux_amd64.tar.gz](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_latest_linux_amd64.tar.gz) |
+| Linux ARM64 | [automate4z_latest_linux_arm64.tar.gz](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_latest_linux_arm64.tar.gz) |
+| macOS x86-64 | [automate4z_latest_darwin_amd64.tar.gz](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_latest_darwin_amd64.tar.gz) |
+| macOS Apple Silicon | [automate4z_latest_darwin_arm64.tar.gz](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_latest_darwin_arm64.tar.gz) |
+| Windows x86-64 | [automate4z_latest_windows_amd64.zip](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_latest_windows_amd64.zip) |
+| Windows ARM64 | [automate4z_latest_windows_arm64.zip](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_latest_windows_arm64.zip) |
 
-Verify integrity with the [checksums file](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_checksums.txt):
-
-```bash
-sha256sum --check automate4z_checksums.txt
-```
+To verify integrity, download the [checksums file](https://zarafa-dev-io.github.io/automate4z-docs/releases/automate4z_checksums.txt) for the corresponding release.
 
 Extract and add to your `PATH`:
 
 ```bash
-tar -xzf automate4z_1.1.0_linux_amd64.tar.gz
+tar -xzf automate4z_latest_linux_amd64.tar.gz
 mv a4z /usr/local/bin/
 ```
 
@@ -49,7 +47,7 @@ go build -o a4z ./cmd/a4z
 
 ```bash
 a4z version
-# a4z v1.1.0
+# a4z v1.1.2
 ```
 
 ---
