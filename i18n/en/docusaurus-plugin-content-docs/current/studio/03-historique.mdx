@@ -1,0 +1,62 @@
+---
+sidebar_position: 4
+title: History, Gantt & resume
+---
+
+# Run history
+
+The **Executions** tab lists the **persisted** runs (per workspace), most recent
+first, **filterable** (workflow, status, trigger, id).
+
+{/* 📸 SCREENSHOT TO ADD — Executions view: run list on the left (status, duration,
+    timestamp, trigger) and the filter field.
+    File: static/img/studio/executions-list.png
+    Then replace this block with: ![Executions list](/img/studio/executions-list.png) */}
+
+---
+
+## Run detail
+
+Selecting a run shows its **detail**: status, **RC**, duration, **parameters**,
+trigger, and the list of **tasks** (status, RC, duration).
+
+{/* 📸 SCREENSHOT TO ADD — Run detail: header with status/RC/duration, Parameters
+    section, and the task list.
+    File: static/img/studio/execution-detail.png
+    Then replace this block with: ![Run detail](/img/studio/execution-detail.png) */}
+
+---
+
+## Gantt chart
+
+The detail includes a **timeline (Gantt)**: each task is a bar positioned by its
+**start** and **duration**, colored by status. **Parallel tasks overlap**
+faithfully, and the **offending task** is highlighted. For a running run, the
+Gantt updates **live** with a **"now"** marker.
+
+{/* 📸 SCREENSHOT TO ADD — Gantt of a run with parallelism (overlapping bars),
+    ideally a case with a failed task (red bar).
+    File: static/img/studio/gantt.png
+    Then replace this block with: ![Gantt chart](/img/studio/gantt.png) */}
+
+---
+
+## Relaunch
+
+From the detail, **Relaunch** reopens the workflow and **re-runs** it with the
+recorded parameters.
+
+---
+
+## Resume after failure
+
+For an **interrupted** run (failure, stop), Studio offers **"Resume from
+&lt;task&gt;"** based on the persisted state: tasks that **already succeeded are not
+replayed**, and live monitoring resumes. If the run is **not resumable** (already
+succeeded, file gone, no successful task), the option is **disabled with an
+explanation**.
+
+{/* 📸 SCREENSHOT TO ADD — Detail of a failed run showing the
+    "Resume from &lt;task&gt;" button (and optionally the disabled case with its tooltip).
+    File: static/img/studio/resume.png
+    Then replace this block with: ![Resume after failure](/img/studio/resume.png) */}

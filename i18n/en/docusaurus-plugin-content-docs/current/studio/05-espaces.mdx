@@ -1,0 +1,49 @@
+---
+sidebar_position: 6
+title: Workspaces
+---
+
+# Multiple workspaces
+
+Studio can manage **several workspaces** (folders of workflows) within a single
+session. The **workspace switcher** in the header lets you **switch** between them
+and **open** a new one by **local path**.
+
+{/* 📸 SCREENSHOT TO ADD — Open workspace switcher: list of workspaces + the
+    "open a workspace by path" field.
+    File: static/img/studio/workspaces.png
+    Then replace this block with: ![Workspace switcher](/img/studio/workspaces.png) */}
+
+---
+
+## Open & switch
+
+- The **launch** workspace (`--workspace`, or the current directory) is the
+  `default` workspace.
+- The **+** button opens a field to enter a **folder path**; the server checks
+  that it exists, then adds it and switches to it.
+- **Switching** resets the open document and **reloads the workflow list** (and
+  the executions if that view is open).
+
+:::note Why a path?
+The browser cannot open a local folder picker. Since `a4z serve` is bound to
+**loopback** and already serves local files, opening a workspace is done by
+**entering its path**.
+:::
+
+---
+
+## Isolation
+
+| Item | Isolated per workspace? |
+|------|-------------------------|
+| **Discovery** (workflow list) | ✅ yes |
+| **Read / save** of files | ✅ yes |
+| **Executions** (history, Gantt, resume) | ✅ yes (one `.automate4z/runs.db` per workspace) |
+| **Artifacts** | ✅ yes |
+| **Secrets** | ⚠️ **no** — global (machine keychain) |
+
+:::info Global secrets
+Secrets live in the **OS keychain** (per machine), shared across workspaces: a
+credential (z/OS token, etc.) is usually common to a user's projects.
+:::

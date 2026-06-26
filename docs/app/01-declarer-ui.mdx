@@ -1,0 +1,307 @@
+---
+sidebar_position: 2
+title: Déclarer une UI
+---
+
+# Déclarer une UI dans le workflow
+
+Une App se déclare **dans le YAML du workflow lui-même**, via un bloc optionnel
+**`ui:`**. Un seul fichier embarque donc **la logique** (`inputs`, `steps`,
+`outputs`) **et l'interface** (`ui:`) — source unique de vérité.
+
+:::tip Principe : annoter, ne pas dupliquer
+Le bloc `ui:` **annote** des éléments qui existent déjà dans le workflow : il
+ajoute des **métadonnées de présentation** (libellé, aide, type de contrôle…)
+au-dessus des `inputs` existants. Le **type**, le caractère **obligatoire** et la
+**valeur par défaut** restent portés par le bloc `inputs`. On n'écrit jamais deux
+fois la même information.
+:::
+
+Un workflow **sans** bloc `ui:` n'est **pas** une App : `a4z run --ui` le refuse.
+
+## Squelette
+
+```yaml
+apiVersion: automate4z/v1
+kind: Workflow
+name: jeu-donnees-test
+
+inputs:                      # ← la logique : paramètres typés
+  table:
+    type: string
+    required: true
+    enum: [PROD.CLIENTS, PROD.COMPTES]
+
+ui:                          # ← l'interface : présentation opérateur
+  name: Jeu de données de test
+  description: Génère un échantillon anonymisé prêt pour vos tests.
+  inputs:                    # annote les inputs ci-dessus
+    table:
+      label: Table source
+      help: Table de production à échantillonner.
+      type: enum
+  outputs:                   # résultats à exposer après exécution
+    dataset:
+      label: Jeu de données
+      kind: artifact
+      artifact: dataset.csv
+
+steps:
+  - id: extract
+    name: Extraction depuis le mainframe
+    uses: zos-db2
+    with: { query: "SELECT * FROM ${{ inputs.table }}" }
+```
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `ui.name` | string | **Titre** de l'App (le nom du traitement). À défaut, le `name` du workflow. |
+| `ui.description` | string | Sous-titre affiché sous le titre. |
+| `ui.inputs` | objet | Présentation **par input** (voir ci-dessous). L'**ordre** des champs du formulaire suit l'ordre de déclaration ici. |
+| `ui.outputs` | objet | **Résultats** à exposer après exécution (voir plus bas). |
+
+---
+
+## `ui.inputs` — le formulaire
+
+Chaque clé de `ui.inputs` doit correspondre au nom d'un **input existant** du
+workflow. Tous les champs sont **optionnels** : à défaut, ils sont dérivés de
+l'input annoté.
+
+```yaml
+inputs:
+  from:
+    type: string
+    required: true
+    pattern: '^\d{4}-\d{2}-\d{2}$'
+  anonymize:
+    type: boolean
+    default: true
+
+ui:
+  inputs:
+    from:
+      label: Du
+      help: Premier jour de la période à inclure.
+      type: date
+    anonymize:
+      label: Anonymiser les données personnelles
+      help: Masque les colonnes contenant des informations personnelles. Recommandé.
+```
+
+| Champ | Type | Rôle | À défaut |
+|-------|------|------|----------|
+| `label` | string | Libellé lisible affiché au-dessus du contrôle. | le **nom** de l'input |
+| `help` | string | Texte d'aide sous le libellé. | la `description` de l'input |
+| `type` | string | **Contrôle** rendu (voir les 6 types ci-dessous). | dérivé du `type` de l'input |
+| `options` | liste(string) | Choix d'une liste déroulante (`enum`). | l'`enum` de l'input |
+| `default` | string / nombre / booléen | Valeur pré-remplie. | le `default` de l'input |
+| `required` | booléen | Force le caractère obligatoire. | le `required` de l'input |
+| `placeholder` | string | Texte indicatif (contrôles texte / nombre). | — |
+| `min` / `max` | nombre | Bornes incluses d'un contrôle `number`. | — |
+
+### Les 6 types de contrôle
+
+| `type` | Contrôle rendu | Valeur produite |
+|--------|----------------|-----------------|
+| `text` | champ texte | chaîne |
+| `number` | champ numérique (avec `min`/`max`) | nombre |
+| `boolean` | **bascule** (toggle) | `true` / `false` |
+| `enum` | **liste déroulante** (`options`) | une des options |
+| `date` | **sélecteur de date** | `AAAA-MM-JJ` |
+| `file` | **sélecteur de fichier** | nom du fichier |
+
+### Quand `type` est omis
+
+Si vous ne précisez pas `type` côté `ui:`, le contrôle est **dérivé du type de
+l'input** :
+
+| `inputs.<nom>.type` | Contrôle dérivé |
+|---------------------|-----------------|
+| `string` | `text` |
+| `number` / `integer` | `number` |
+| `boolean` | `boolean` (bascule) |
+| *(input avec `enum`)* | `enum` (liste) |
+
+:::note Date et fichier
+Le schéma de workflow ne connaît que `string`/`number`/`integer`/`boolean` pour
+les `inputs`. Les contrôles **`date`** et **`file`** s'obtiennent donc en
+**forçant** `type:` côté `ui:` (l'input reste typé `string`, idéalement avec un
+`pattern:` pour la date).
+:::
+
+### Validation côté opérateur
+
+La validation est **dérivée du modèle** et affichée **sans jargon** : un champ
+obligatoire vide, un nombre hors bornes, une date invalide ou un choix hors liste
+**bloquent le lancement** avec un message clair (« *« Table source » est
+obligatoire.* »).
+
+---
+
+## `ui.outputs` — les résultats
+
+Le bloc `ui.outputs` déclare le **sous-ensemble de résultats** à présenter à
+l'opérateur après un run réussi. Chaque entrée a un `kind` qui choisit la
+présentation.
+
+```yaml
+ui:
+  outputs:
+    rows:
+      label: Lignes
+      kind: value
+      task: export-csv      # lit la sortie d'un step…
+      name: rowCount        # …par son nom
+    preview:
+      label: Aperçu
+      kind: table
+      task: extract
+      name: sample          # une sortie = tableau JSON de lignes
+      pii: [NOM, EMAIL]     # colonnes affichées masquées
+    dataset:
+      label: Jeu de données
+      kind: artifact
+      artifact: dataset.csv # fichier produit, téléchargeable
+    logs:
+      kind: logs            # bascule « détails techniques », masqués par défaut
+```
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `label` | string | Libellé lisible du résultat. |
+| `kind` | string | Présentation : `status`, `value`, `table`, `artifact` ou `logs`. |
+| `task` | string | Id du step dont lire la sortie (`value` / `table`). |
+| `name` | string | Nom de la sortie à lire (`value` / `table`). |
+| `artifact` | string | Fichier produit à exposer au téléchargement (`kind: artifact`). |
+| `pii` | liste(string) | Colonnes d'une **table** affichées **masquées** (gouvernance). |
+
+### Les 5 types de sortie (`kind`)
+
+| `kind` | Rendu |
+|--------|-------|
+| `status` | Résumé de **statut** (succès / échec). Toujours disponible. |
+| `value` | Une paire **clé / valeur** (résultat chiffré, identifiant…). |
+| `table` | Un **aperçu en table**. La sortie lue doit être un **tableau JSON d'objets** ; les colonnes listées dans `pii` sont **masquées**. |
+| `artifact` | Un **fichier téléchargeable**, borné au workspace (voir [téléchargement](../studio/execution)). |
+| `logs` | Active une **bascule** « détails techniques ». Les logs restent **masqués par défaut**. |
+
+:::caution Anonymisation = gouvernance visible
+Les colonnes déclarées dans `pii:` sont **rendues masquées** dans l'aperçu
+(`••••••`), avec un badge **PII**. C'est une mesure de **gouvernance** : la valeur
+réelle n'atteint jamais le navigateur de l'opérateur.
+:::
+
+À défaut de bloc `ui.outputs`, l'App expose **tous** les artefacts produits et
+**toutes** les sorties clé/valeur des steps (comportement par défaut raisonnable).
+
+---
+
+## Exemple complet
+
+Un workflow App de bout en bout : « Jeu de données de test ».
+
+```yaml
+apiVersion: automate4z/v1
+kind: Workflow
+name: jeu-donnees-test
+description: |
+  Constitue un échantillon anonymisé d'une table de production z/OS.
+
+inputs:
+  table:
+    type: string
+    required: true
+    enum: [PROD.CLIENTS, PROD.COMPTES, PROD.TRANSACTIONS]
+    description: Table de production à échantillonner.
+  from:
+    type: string
+    required: true
+    pattern: '^\d{4}-\d{2}-\d{2}$'
+  to:
+    type: string
+    required: true
+    pattern: '^\d{4}-\d{2}-\d{2}$'
+  anonymize:
+    type: boolean
+    default: true
+
+ui:
+  name: Jeu de données de test
+  description: >-
+    Génère un échantillon anonymisé à partir d'une table de production,
+    prêt à l'emploi pour vos tests.
+  inputs:
+    table:
+      label: Table source
+      help: Table de production à partir de laquelle l'échantillon est constitué.
+      type: enum
+    from:
+      label: Du
+      type: date
+    to:
+      label: Au
+      type: date
+    anonymize:
+      label: Anonymiser les données personnelles
+      help: Masque les colonnes contenant des informations personnelles. Recommandé.
+  outputs:
+    rows:
+      label: Lignes
+      kind: value
+      task: export-csv
+      name: rowCount
+    preview:
+      label: Aperçu
+      kind: table
+      task: extract
+      name: sample
+      pii: [NOM, EMAIL]
+    dataset:
+      label: Jeu de données
+      kind: artifact
+      artifact: dataset.csv
+    logs:
+      kind: logs
+
+steps:
+  - id: extract
+    name: Extraction depuis le mainframe
+    uses: zos-db2
+    with:
+      query: |
+        SELECT * FROM ${{ inputs.table }}
+        WHERE DT BETWEEN '${{ inputs.from }}' AND '${{ inputs.to }}'
+  - id: anonymize
+    name: Anonymisation
+    if: ${{ inputs.anonymize }}
+    uses: shell
+    with: { run: "echo masquage PII" }
+  - id: export-csv
+    name: Conversion du format
+    uses: convert
+    with: { from: json, to: csv, src: ./output/raw.json, dst: ./output/dataset.csv }
+  - id: summary
+    name: Préparation du fichier
+    uses: shell
+    with: { run: "echo prêt" }
+```
+
+Les `name` des steps (« Extraction depuis le mainframe », « Anonymisation »…)
+deviennent les **libellés lisibles** de la barre de progression.
+
+---
+
+## Vérifier sa déclaration
+
+Le bloc `ui:` fait partie du **schéma** du binaire courant :
+
+```bash
+a4z lint mon-workflow.yml      # valide aussi le bloc ui:
+a4z schema | grep -A2 uiInputDef   # le schéma exposé inclut ui:
+```
+
+Un `type` de contrôle inconnu, un `kind` de sortie inconnu ou un champ non
+reconnu dans `ui:` sont **rejetés** par le lint.
+
+Une fois la déclaration prête, passez à **[Lancer une App](./lancer)**.

@@ -6,5 +6,13 @@
   "sidebar.tutorialSidebar.category.Spécification Workflow": {
     "message": "Workflow Specification",
     "description": "The label for category Spécification Workflow in sidebar tutorialSidebar"
+  },
+  "sidebar.tutorialSidebar.category.Interface web (App opérateur)": {
+    "message": "Web interface (Operator App)",
+    "description": "The label for category Interface web (App opérateur) in sidebar tutorialSidebar"
+  },
+  "sidebar.tutorialSidebar.category.Interface web (Studio)": {
+    "message": "Web interface (Studio)",
+    "description": "The label for category Interface web (Studio) in sidebar tutorialSidebar"
   }
 }

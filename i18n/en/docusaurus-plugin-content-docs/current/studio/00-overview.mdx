@@ -1,0 +1,69 @@
+---
+sidebar_position: 1
+title: Overview
+---
+
+# Studio — the web interface
+
+**Studio** is automate4z's web interface, served locally by the `a4z` binary.
+It lets you edit, validate, run and monitor workflows — in **text** mode
+(YAML editor) or **no-code** mode (visual canvas) — without installing anything
+else: the SPA is **embedded in the binary**.
+
+{/* 📸 SCREENSHOT TO ADD — Studio overview: header (workspace switcher,
+    Editor / Executions tabs), workflow list on the left, editor + DAG in the center.
+    File: static/img/studio/overview.png
+    Then replace this block with: ![Studio overview](/img/studio/overview.png) */}
+
+---
+
+## Launch Studio
+
+```bash
+a4z serve
+```
+
+`a4z serve` starts a local web server and **opens the browser** on the interface.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--host` | `127.0.0.1` | Listening interface (loopback only by default) |
+| `--port` | `4500` | TCP port (`0` picks a free port) |
+| `--workspace` | current directory | Served workspace (folder of workflows) |
+| `--no-open` | — | Do not open the browser automatically |
+
+### Security model
+
+- The server **binds to `127.0.0.1`** by default. Any non-loopback `--host` shows
+  a warning (there is **no network authentication**).
+- A random **session token** is generated and included in the opened URL; any
+  request without a valid token gets `401`. Mutating methods are CSRF-protected.
+- `a4z serve` is a **one-shot binary**: no daemon, no service.
+
+---
+
+## The header
+
+The Studio header gathers:
+
+- the **workspace switcher** (open / switch between several folders — see
+  [Workspaces](./espaces));
+- the **Editor / Executions** toggle (editing vs [run history](./historique));
+- the light / dark theme and the binary version.
+
+{/* 📸 SCREENSHOT TO ADD — Close-up of the header: workspace switcher +
+    Editor/Executions tabs + theme toggle.
+    File: static/img/studio/header.png
+    Then replace this block with: ![Studio header](/img/studio/header.png) */}
+
+---
+
+## Two ways to edit
+
+| Mode | Description |
+|------|-------------|
+| **Code** | [YAML editor](./editeur) (CodeMirror) with validation, autocomplete and a read-only DAG view. |
+| **No-code** | [Visual canvas](./no-code): task catalog, drag-and-drop, properties panel, header editing — all rewriting the YAML while preserving your comments. |
+
+Both views share the **same internal representation**: switching from one to the
+other never loses content.

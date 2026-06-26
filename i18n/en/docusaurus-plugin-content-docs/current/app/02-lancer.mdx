@@ -1,0 +1,77 @@
+---
+sidebar_position: 3
+title: Launch an App
+---
+
+# Launch an App
+
+Once the [`ui:`](./declarer-ui) block is declared in the workflow, two entry
+points open the App surface — both **local** and **token-secured**.
+
+## `a4z run --ui`
+
+```bash
+a4z run jeu-donnees-test.yml --ui
+```
+
+`--ui` opens the workflow's **locked App surface** instead of running it on the
+command line: the local server starts on `127.0.0.1`, the browser opens
+**directly on the App** (token included), and the operator only has to fill in
+the form.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ui` | `false` | Opens the App surface instead of executing the workflow. |
+| `--no-open` | `false` | Don't open the browser automatically (prints the URL). |
+
+The workflow **must** declare a `ui:` block; otherwise the command stops with an
+explicit error.
+
+:::info Single workflow
+In App mode the server serves **only** this workflow: the operator cannot launch
+another one, nor access the editor, canvas, secrets or history — neither in the
+UI nor at the network-request level.
+:::
+
+## Double-clickable launcher
+
+For an operator **without a terminal**, generate a **launcher** that is opened
+with a double-click:
+
+```bash
+a4z app launcher jeu-donnees-test.yml
+```
+
+The command writes, next to the workflow, an **OS-appropriate** file:
+
+| OS | Generated file | Behavior |
+|----|----------------|----------|
+| **Windows** | `<App>.cmd` | Double-click → runs `a4z run … --ui`. |
+| **macOS** | `<App>.command` (executable) | Double-click → opens the App. |
+| **Linux** | `<App>.desktop` (`Terminal=false`) | Double-click → opens the App. |
+
+The file is named after the **App title** (`ui.name`). A double-click opens the
+right App directly in the browser, **token included, with no manual step**.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output` / `-o` | the workflow's folder | Directory to write the launcher into. |
+
+```bash
+# Drop the launcher onto the operator's Desktop
+a4z app launcher jeu-donnees-test.yml -o ~/Desktop
+```
+
+## Provisioning by IT
+
+The real adoption lever for App mode is **provisioning**, prepared by the
+Platform / IT team on the operator's machine (a packaging / onboarding effort,
+distinct from the UI):
+
+- the **`a4z`** binary installed;
+- the **z/OSMF connection** configured (profile);
+- the **secrets** placed in the **OS keychain** (via [`a4z secrets`](../cli-reference)
+  or the Studio equivalent) — the operator **never enters** them;
+- optionally the **launcher** already on the Desktop.
+
+The operator then only has to **double-click** and fill in the form.

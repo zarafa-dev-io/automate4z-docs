@@ -1,0 +1,61 @@
+---
+sidebar_position: 1
+title: Overview
+---
+
+# App mode — the operator surface
+
+**App mode** is a **locked** variant of the automate4z web interface, aimed at
+**non-developer operators** (testers, analysts). Where [Studio](../studio/overview)
+exposes full authoring (YAML editor, canvas, DAG, secrets, history), an **App**
+shows a **single workflow** as a **guided form**: you fill in parameters, launch,
+follow a readable progression, and download the result — **no YAML, no mainframe
+knowledge required**.
+
+{/* 📸 SCREENSHOT TO ADD — The App surface: "automate4z · App · local" header bar,
+    card with the form (Source table, date range, Anonymize toggle), Launch button.
+    File: static/img/app/overview.png
+    Then replace this block with: ![App surface](/img/app/overview.png) */}
+
+## Who it's for
+
+| Role | Surface | What they do |
+|------|---------|--------------|
+| **Author** (developer) | [Studio](../studio/overview) | Writes the workflow **and** declares its App via the [`ui:`](./declarer-ui) block. |
+| **Platform / IT** | (setup) | Provisions `a4z`, the z/OSMF connection and the **secrets** on the operator's machine. |
+| **Operator** (non-developer) | **App** | Fills the form, launches, downloads the deliverable. |
+
+## The operator journey
+
+1. **Launch** without a terminal (a [double-clickable launcher](./lancer#double-clickable-launcher) or `a4z run <wf> --ui`).
+2. **Form** — enter parameters (text, number, toggle, list, date, file) with help and **jargon-free** validation.
+3. **Progress** — the processing steps, retranslated into **readable labels**, with no return codes or technical logs.
+4. **Results** — a simple summary, a preview (personal-data columns **masked**) and the **download** of the deliverable.
+
+Everything is driven by a single **`ui:`** block added to the workflow's YAML —
+see **[Declare a UI](./declarer-ui)**.
+
+## Principles & security
+
+App mode inherits the guarantees of `a4z serve`:
+
+- **Local, single-user**: listens on **`127.0.0.1`** only, with a **session
+  token** in the opened URL; any request without a token is rejected (`401`).
+- **No data leaves the machine**; single binary, zero infrastructure.
+- **Secrets resolved by the binary** (OS keychain, pre-provisioned by IT). The
+  operator **never enters** a secret in the App.
+- **A truly locked surface**: not only does the UI show no Studio affordance
+  (editor, canvas, workflow list, secrets panel, raw history), the server also
+  **denies those endpoints at the wire** in App mode. The operator can launch
+  **only** the targeted workflow.
+
+:::info Governance
+An App provides a **governed, repeatable entry point** for sensitive operations
+(e.g. building an anonymized test dataset), replacing ad-hoc manual data
+handling — in support of GDPR / PCI / audit requirements.
+:::
+
+## Next steps
+
+- **[Declare a UI](./declarer-ui)** — write the `ui:` block in the workflow (the heart of the matter).
+- **[Launch an App](./lancer)** — `a4z run --ui` and the double-clickable launcher.

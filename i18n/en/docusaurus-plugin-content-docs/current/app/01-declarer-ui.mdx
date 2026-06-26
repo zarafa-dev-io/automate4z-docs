@@ -1,0 +1,305 @@
+---
+sidebar_position: 2
+title: Declare a UI
+---
+
+# Declare a UI in the workflow
+
+An App is declared **inside the workflow's YAML itself**, via an optional
+**`ui:`** block. A single file therefore carries both **the logic** (`inputs`,
+`steps`, `outputs`) **and the interface** (`ui:`) — a single source of truth.
+
+:::tip Principle: annotate, don't duplicate
+The `ui:` block **annotates** things that already exist in the workflow: it adds
+**presentation metadata** (label, help, control type…) on top of the existing
+`inputs`. The **type**, **required** flag and **default** value remain owned by
+the `inputs` block. You never write the same information twice.
+:::
+
+A workflow **without** a `ui:` block is **not** an App: `a4z run --ui` rejects it.
+
+## Skeleton
+
+```yaml
+apiVersion: automate4z/v1
+kind: Workflow
+name: jeu-donnees-test
+
+inputs:                      # ← the logic: typed parameters
+  table:
+    type: string
+    required: true
+    enum: [PROD.CLIENTS, PROD.COMPTES]
+
+ui:                          # ← the interface: operator presentation
+  name: Test dataset
+  description: Builds an anonymized sample ready for your tests.
+  inputs:                    # annotates the inputs above
+    table:
+      label: Source table
+      help: Production table to sample from.
+      type: enum
+  outputs:                   # results to expose after the run
+    dataset:
+      label: Dataset
+      kind: artifact
+      artifact: dataset.csv
+
+steps:
+  - id: extract
+    name: Extract from the mainframe
+    uses: zos-db2
+    with: { query: "SELECT * FROM ${{ inputs.table }}" }
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ui.name` | string | **Title** of the App (the job name). Defaults to the workflow `name`. |
+| `ui.description` | string | Subtitle shown under the title. |
+| `ui.inputs` | object | **Per-input** presentation (see below). The form field **order** follows the declaration order here. |
+| `ui.outputs` | object | **Results** to expose after the run (see below). |
+
+---
+
+## `ui.inputs` — the form
+
+Each key in `ui.inputs` must match the name of an **existing input** of the
+workflow. All fields are **optional**: when omitted, they are derived from the
+annotated input.
+
+```yaml
+inputs:
+  from:
+    type: string
+    required: true
+    pattern: '^\d{4}-\d{2}-\d{2}$'
+  anonymize:
+    type: boolean
+    default: true
+
+ui:
+  inputs:
+    from:
+      label: From
+      help: First day of the period to include.
+      type: date
+    anonymize:
+      label: Anonymize personal data
+      help: Masks columns containing personal information. Recommended.
+```
+
+| Field | Type | Role | Default |
+|-------|------|------|---------|
+| `label` | string | Readable label shown above the control. | the input **name** |
+| `help` | string | Help text under the label. | the input's `description` |
+| `type` | string | **Control** rendered (see the 6 types below). | derived from the input `type` |
+| `options` | list(string) | Choices for a dropdown (`enum`). | the input's `enum` |
+| `default` | string / number / boolean | Pre-filled value. | the input's `default` |
+| `required` | boolean | Forces the required flag. | the input's `required` |
+| `placeholder` | string | Hint text (text / number controls). | — |
+| `min` / `max` | number | Inclusive bounds of a `number` control. | — |
+
+### The 6 control types
+
+| `type` | Rendered control | Produced value |
+|--------|------------------|----------------|
+| `text` | text field | string |
+| `number` | numeric field (with `min`/`max`) | number |
+| `boolean` | **toggle** | `true` / `false` |
+| `enum` | **dropdown** (`options`) | one of the options |
+| `date` | **date picker** | `YYYY-MM-DD` |
+| `file` | **file picker** | file name |
+
+### When `type` is omitted
+
+If you don't set `type` on the `ui:` side, the control is **derived from the
+input type**:
+
+| `inputs.<name>.type` | Derived control |
+|----------------------|-----------------|
+| `string` | `text` |
+| `number` / `integer` | `number` |
+| `boolean` | `boolean` (toggle) |
+| *(input with `enum`)* | `enum` (dropdown) |
+
+:::note Date and file
+The workflow schema only knows `string`/`number`/`integer`/`boolean` for
+`inputs`. The **`date`** and **`file`** controls are therefore obtained by
+**forcing** `type:` on the `ui:` side (the input stays typed `string`, ideally
+with a `pattern:` for the date).
+:::
+
+### Operator-side validation
+
+Validation is **derived from the model** and shown **without jargon**: an empty
+required field, an out-of-bounds number, an invalid date or an out-of-list choice
+**block the launch** with a clear message ("*"Source table" is required.*").
+
+---
+
+## `ui.outputs` — the results
+
+The `ui.outputs` block declares the **subset of results** to present to the
+operator after a successful run. Each entry has a `kind` that selects the
+presentation.
+
+```yaml
+ui:
+  outputs:
+    rows:
+      label: Rows
+      kind: value
+      task: export-csv      # reads a step's output…
+      name: rowCount        # …by its name
+    preview:
+      label: Preview
+      kind: table
+      task: extract
+      name: sample          # an output = JSON array of rows
+      pii: [NAME, EMAIL]    # columns shown masked
+    dataset:
+      label: Dataset
+      kind: artifact
+      artifact: dataset.csv # produced file, downloadable
+    logs:
+      kind: logs            # "technical details" toggle, hidden by default
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `label` | string | Readable label of the result. |
+| `kind` | string | Presentation: `status`, `value`, `table`, `artifact` or `logs`. |
+| `task` | string | Id of the step whose output to read (`value` / `table`). |
+| `name` | string | Name of the output to read (`value` / `table`). |
+| `artifact` | string | Produced file to expose for download (`kind: artifact`). |
+| `pii` | list(string) | Columns of a **table** shown **masked** (governance). |
+
+### The 5 output kinds (`kind`)
+
+| `kind` | Rendering |
+|--------|-----------|
+| `status` | A **status** summary (success / failure). Always available. |
+| `value` | A single **key / value** pair (a count, an identifier…). |
+| `table` | A **table preview**. The read output must be a **JSON array of objects**; columns listed in `pii` are **masked**. |
+| `artifact` | A **downloadable file**, bounded to the workspace (see [download](../studio/execution)). |
+| `logs` | Enables a **"technical details" toggle**. Logs stay **hidden by default**. |
+
+:::caution Anonymization = visible governance
+Columns declared in `pii:` are **rendered masked** in the preview (`••••••`), with
+a **PII** badge. This is a **governance** measure: the real value never reaches
+the operator's browser.
+:::
+
+When there is no `ui.outputs` block, the App exposes **all** produced artifacts
+and **all** key/value step outputs (a sensible default).
+
+---
+
+## Full example
+
+An end-to-end App workflow: "Test dataset".
+
+```yaml
+apiVersion: automate4z/v1
+kind: Workflow
+name: jeu-donnees-test
+description: |
+  Builds an anonymized sample of a z/OS production table.
+
+inputs:
+  table:
+    type: string
+    required: true
+    enum: [PROD.CLIENTS, PROD.COMPTES, PROD.TRANSACTIONS]
+    description: Production table to sample.
+  from:
+    type: string
+    required: true
+    pattern: '^\d{4}-\d{2}-\d{2}$'
+  to:
+    type: string
+    required: true
+    pattern: '^\d{4}-\d{2}-\d{2}$'
+  anonymize:
+    type: boolean
+    default: true
+
+ui:
+  name: Test dataset
+  description: >-
+    Builds an anonymized sample from a production table,
+    ready to use for your tests.
+  inputs:
+    table:
+      label: Source table
+      help: Production table the sample is built from.
+      type: enum
+    from:
+      label: From
+      type: date
+    to:
+      label: To
+      type: date
+    anonymize:
+      label: Anonymize personal data
+      help: Masks columns containing personal information. Recommended.
+  outputs:
+    rows:
+      label: Rows
+      kind: value
+      task: export-csv
+      name: rowCount
+    preview:
+      label: Preview
+      kind: table
+      task: extract
+      name: sample
+      pii: [NAME, EMAIL]
+    dataset:
+      label: Dataset
+      kind: artifact
+      artifact: dataset.csv
+    logs:
+      kind: logs
+
+steps:
+  - id: extract
+    name: Extract from the mainframe
+    uses: zos-db2
+    with:
+      query: |
+        SELECT * FROM ${{ inputs.table }}
+        WHERE DT BETWEEN '${{ inputs.from }}' AND '${{ inputs.to }}'
+  - id: anonymize
+    name: Anonymization
+    if: ${{ inputs.anonymize }}
+    uses: shell
+    with: { run: "echo masking PII" }
+  - id: export-csv
+    name: Format conversion
+    uses: convert
+    with: { from: json, to: csv, src: ./output/raw.json, dst: ./output/dataset.csv }
+  - id: summary
+    name: File preparation
+    uses: shell
+    with: { run: "echo ready" }
+```
+
+The step `name`s ("Extract from the mainframe", "Anonymization"…) become the
+**readable labels** of the progress bar.
+
+---
+
+## Validating your declaration
+
+The `ui:` block is part of the current binary's **schema**:
+
+```bash
+a4z lint my-workflow.yml      # also validates the ui: block
+a4z schema | grep -A2 uiInputDef   # the exported schema includes ui:
+```
+
+An unknown control `type`, an unknown output `kind`, or an unrecognized field in
+`ui:` are **rejected** by lint.
+
+Once your declaration is ready, head to **[Launch an App](./lancer)**.

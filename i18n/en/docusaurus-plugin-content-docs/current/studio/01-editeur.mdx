@@ -1,0 +1,69 @@
+---
+sidebar_position: 2
+title: Workflow editor
+---
+
+# Workflow editor (Code mode)
+
+**Code** mode shows the YAML editor on the left and the read-only **DAG view**
+(execution graph) on the right.
+
+{/* 📸 SCREENSHOT TO ADD — Split view: CodeMirror editor on the left, DAG on the right,
+    with the "✓ schema valid" indicator and the "Saved / ● Modified" state.
+    File: static/img/studio/editor-split.png
+    Then replace this block with: ![Editor + DAG](/img/studio/editor-split.png) */}
+
+---
+
+## Editing
+
+- **CodeMirror 6** with YAML highlighting, line numbers and folding.
+- **`${secret:NAME}`** (amber) and **`${{ … }}`** (purple) references are
+  highlighted to set them apart.
+- **Ctrl/Cmd-S** saves. The write is **verbatim** (your comments, order and style
+  are preserved). A **conflict detection** warns if the file changed on disk since
+  it was opened (a **Reload / Overwrite** banner).
+
+---
+
+## Schema-driven autocomplete
+
+The editor offers completions from the **binary's schema** (`a4z schema`):
+
+- workflow keys and step keys,
+- task types on `uses:`,
+- fields on `with:` depending on the task.
+
+{/* 📸 SCREENSHOT TO ADD — Open autocomplete menu (e.g. the list of task types
+    on `uses:`, or the fields on `with:`).
+    File: static/img/studio/autocomplete.png
+    Then replace this block with: ![Autocomplete](/img/studio/autocomplete.png) */}
+
+---
+
+## Validation & the "Problems" panel
+
+The content is continuously validated (schema + DAG cycles + warnings for missing
+secrets). Diagnostics appear **inline** (gutter) and in a clickable **Problems
+panel** (jump to line). A **"✓ schema valid"** / **"✕ N error(s)"** indicator
+summarizes the state.
+
+{/* 📸 SCREENSHOT TO ADD — "Problems" panel with one or two diagnostics, and an
+    error underline in the editor.
+    File: static/img/studio/problems.png
+    Then replace this block with: ![Problems panel](/img/studio/problems.png) */}
+
+---
+
+## DAG view (read-only)
+
+On the right, the **execution graph** shows the steps and their dependencies
+(including the **implicit sequential dependency**: a step without `needs` depends
+on the previous one). When the text becomes invalid, the **last valid graph** is
+kept with an indication. During a run, each node reflects the task's **live
+status**.
+
+:::tip Visual editing
+To **modify** the graph (add/remove tasks, draw dependencies), switch to
+[No-code mode](./no-code).
+:::
