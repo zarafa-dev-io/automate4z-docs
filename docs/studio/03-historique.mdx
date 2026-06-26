@@ -1,0 +1,61 @@
+---
+sidebar_position: 4
+title: Historique, Gantt & reprise
+---
+
+# Historique des exécutions
+
+L'onglet **Executions** liste les runs **persistés** (par espace de travail), les plus
+récents en tête, **filtrables** (workflow, statut, déclencheur, id).
+
+{/* 📸 CAPTURE À AJOUTER — Vue Exécutions : liste des runs à gauche (statut, durée,
+    horodatage, déclencheur) et le champ de filtre.
+    Fichier : static/img/studio/executions-list.png
+    Puis remplacer ce bloc par : ![Liste des exécutions](/img/studio/executions-list.png) */}
+
+---
+
+## Détail d'un run
+
+Sélectionner un run affiche son **détail** : statut, **RC**, durée, **paramètres**,
+déclencheur, et la liste des **tâches** (statut, RC, durée).
+
+{/* 📸 CAPTURE À AJOUTER — Détail d'un run : en-tête avec statut/RC/durée, section
+    Paramètres, et la liste des tâches.
+    Fichier : static/img/studio/execution-detail.png
+    Puis remplacer ce bloc par : ![Détail d'un run](/img/studio/execution-detail.png) */}
+
+---
+
+## Diagramme de Gantt
+
+Le détail inclut une **chronologie (Gantt)** : chaque tâche est une barre positionnée par
+son **début** et sa **durée**, colorée par statut. Les tâches **parallèles se chevauchent**
+fidèlement, et la **tâche fautive** est mise en évidence. Pour un run en cours, le Gantt se
+met à jour **en direct** avec un repère **« maintenant »**.
+
+{/* 📸 CAPTURE À AJOUTER — Gantt d'un run avec parallélisme (barres qui se chevauchent),
+    idéalement un cas avec une tâche en échec (barre rouge).
+    Fichier : static/img/studio/gantt.png
+    Puis remplacer ce bloc par : ![Diagramme de Gantt](/img/studio/gantt.png) */}
+
+---
+
+## Relancer
+
+Depuis le détail, **Relancer** rouvre le workflow et le **réexécute** avec les paramètres
+enregistrés.
+
+---
+
+## Reprendre sur incident
+
+Pour un run **interrompu** (échec, arrêt), Studio propose **« Reprendre depuis &lt;tâche&gt; »**
+en s'appuyant sur l'état persisté : les tâches **déjà réussies ne sont pas rejouées**, et le
+suivi en direct reprend. Si le run n'est **pas reprenable** (déjà réussi, fichier disparu,
+aucune tâche réussie), l'option est **désactivée avec une explication**.
+
+{/* 📸 CAPTURE À AJOUTER — Détail d'un run en échec montrant le bouton
+    « Reprendre depuis &lt;tâche&gt; » (et éventuellement le cas désactivé avec son infobulle).
+    Fichier : static/img/studio/resume.png
+    Puis remplacer ce bloc par : ![Reprendre sur incident](/img/studio/resume.png) */}

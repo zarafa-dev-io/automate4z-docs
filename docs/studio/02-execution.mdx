@@ -1,0 +1,60 @@
+---
+sidebar_position: 3
+title: Exécution & suivi
+---
+
+# Exécuter un workflow
+
+Depuis l'éditeur, le **panneau d'exécution** permet de lancer le workflow ouvert
+**in-process** (sans sous-processus `a4z`).
+
+{/* 📸 CAPTURE À AJOUTER — Panneau d'exécution avec le bouton Exécuter et, le cas échéant,
+    le formulaire des paramètres requis.
+    Fichier : static/img/studio/run-panel.png
+    Puis remplacer ce bloc par : ![Panneau d'exécution](/img/studio/run-panel.png) */}
+
+---
+
+## Refus & paramètres
+
+Avant de lancer, le serveur vérifie :
+
+- **workflow invalide** → l'exécution est refusée et les erreurs sont pointées ;
+- **paramètres requis manquants** → un **formulaire** demande les valeurs (`inputs`) ;
+- **secret `${secret:NOM}` non défini** → l'exécution est refusée.
+
+{/* 📸 CAPTURE À AJOUTER — Formulaire des paramètres requis (un ou deux champs `inputs`).
+    Fichier : static/img/studio/run-inputs.png
+    Puis remplacer ce bloc par : ![Formulaire des paramètres](/img/studio/run-inputs.png) */}
+
+---
+
+## Suivi en direct
+
+Une fois lancé, le **suivi en direct** consomme le flux d'événements **NDJSON** du moteur
+et affiche le cycle de vie au fil de l'eau :
+
+- statut par tâche, **RC** (return/condition code), progression `n/total`, durées ;
+- **logs défilants** (avec masquage des secrets hérité du flux) ;
+- statut final + **RC global**.
+
+La **vue DAG reflète le statut par nœud en direct** (succès / échec / annulé / ignoré /
+en cours), et un **diagramme de Gantt** se met à jour avec un repère « maintenant »
+(voir [Historique & Gantt](./historique)).
+
+{/* 📸 CAPTURE À AJOUTER — Vue d'exécution en direct : liste des tâches avec statuts/RC
+    et logs ; idéalement avec le DAG coloré par statut au-dessus.
+    Fichier : static/img/studio/run-live.png
+    Puis remplacer ce bloc par : ![Suivi en direct](/img/studio/run-live.png) */}
+
+---
+
+## Résultats & artefacts
+
+À la fin du run, les **sorties par tâche** et les **artefacts** produits (fichiers détectés
+dans l'espace de travail, ex. une archive) apparaissent avec des **liens de téléchargement**
+— y compris pour un run en échec (sorties partielles consultables).
+
+{/* 📸 CAPTURE À AJOUTER — Section Artefacts avec un ou plusieurs liens de téléchargement.
+    Fichier : static/img/studio/run-artifacts.png
+    Puis remplacer ce bloc par : ![Artefacts](/img/studio/run-artifacts.png) */}

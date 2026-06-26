@@ -1,0 +1,68 @@
+---
+sidebar_position: 2
+title: Éditeur de workflow
+---
+
+# Éditeur de workflow (mode Code)
+
+Le mode **Code** présente l'éditeur YAML à gauche et la **vue DAG** (graphe d'exécution)
+en lecture seule à droite.
+
+{/* 📸 CAPTURE À AJOUTER — Vue scindée : éditeur CodeMirror à gauche, DAG à droite,
+    avec l'indicateur « ✓ schéma valide » et l'état « Saved / ● Modified ».
+    Fichier : static/img/studio/editor-split.png
+    Puis remplacer ce bloc par : ![Éditeur + DAG](/img/studio/editor-split.png) */}
+
+---
+
+## Édition
+
+- **CodeMirror 6** avec coloration YAML, numéros de ligne et pliage.
+- Les références **`${secret:NOM}`** (ambre) et **`${{ … }}`** (violet) sont mises en
+  évidence pour les distinguer du reste.
+- **Ctrl/Cmd-S** enregistre. L'écriture est **verbatim** (vos commentaires, l'ordre et le
+  style sont préservés). Une **détection de conflit** prévient si le fichier a changé sur
+  le disque depuis l'ouverture (bandeau **Recharger / Écraser**).
+
+---
+
+## Autocomplétion guidée par le schéma
+
+L'éditeur propose des complétions issues du **schéma du binaire** (`a4z schema`) :
+
+- clés du workflow et clés de step,
+- types de tâches sur `uses:`,
+- champs sur `with:` selon la tâche.
+
+{/* 📸 CAPTURE À AJOUTER — Menu d'autocomplétion ouvert (ex. liste des types de tâches
+    sur `uses:`, ou des champs sur `with:`).
+    Fichier : static/img/studio/autocomplete.png
+    Puis remplacer ce bloc par : ![Autocomplétion](/img/studio/autocomplete.png) */}
+
+---
+
+## Validation & panneau « Problèmes »
+
+Le contenu est validé en continu (schéma + cycles du DAG + avertissements sur les secrets
+absents). Les diagnostics apparaissent **en ligne** (gouttière) et dans un **panneau
+Problèmes** cliquable (saut à la ligne). Un indicateur **« ✓ schéma valide »** /
+**« ✕ N erreur(s) »** résume l'état.
+
+{/* 📸 CAPTURE À AJOUTER — Panneau « Problèmes » avec un ou deux diagnostics, et un
+    soulignement d'erreur dans l'éditeur.
+    Fichier : static/img/studio/problems.png
+    Puis remplacer ce bloc par : ![Panneau Problèmes](/img/studio/problems.png) */}
+
+---
+
+## Vue DAG (lecture seule)
+
+À droite, le **graphe d'exécution** affiche les steps et leurs dépendances (y compris la
+**dépendance séquentielle implicite** : un step sans `needs` dépend du précédent). Quand
+le texte devient invalide, le **dernier graphe valide** est conservé avec une indication.
+Pendant une exécution, chaque nœud reflète le **statut en direct** de la tâche.
+
+:::tip Édition visuelle
+Pour **modifier** le graphe (ajouter/supprimer des tâches, tracer des dépendances),
+basculez en [mode No-code](./no-code).
+:::

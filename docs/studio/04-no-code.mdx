@@ -1,0 +1,90 @@
+---
+sidebar_position: 5
+title: Éditeur no-code
+---
+
+# Éditeur visuel (mode No-code)
+
+La bascule **Code / No-code** (barre de fichier) remplace l'éditeur texte par un **canvas
+visuel**. Le canvas et le texte partagent la **même représentation interne** : toute action
+visuelle **réécrit le YAML** en **préservant vos commentaires, l'ordre et le style**
+(édition CST).
+
+{/* 📸 CAPTURE À AJOUTER — Mode No-code : catalogue de tâches à gauche, canvas au centre
+    (nœud « Workflow » en tête + steps), panneau de propriétés à droite.
+    Fichier : static/img/studio/nocode-overview.png
+    Puis remplacer ce bloc par : ![Éditeur no-code](/img/studio/nocode-overview.png) */}
+
+:::info Sauvegarde
+La sauvegarde fonctionne en no-code comme en code : bouton **Save** dans la barre de fichier
+et raccourci **Ctrl/Cmd-S**.
+:::
+
+---
+
+## Le canvas
+
+- Nœuds **déplaçables**, **sélectionnables**, avec **ports** de connexion.
+- **Connecter** deux tâches (glisser d'un port à l'autre) ajoute une dépendance `needs`.
+- **Supprimer** une tâche / un lien via la barre d'outils (la suppression d'une tâche purge
+  aussi les `needs` qui la référençaient).
+- La synchro **texte → canvas** est **incrémentale** : une édition met à jour le graphe sans
+  réorganiser les nœuds existants. Si le YAML devient invalide, le **dernier graphe valide**
+  est conservé (indication « Last valid graph »).
+
+---
+
+## Catalogue de tâches & glisser-déposer
+
+Le **catalogue** liste les tâches intégrées **classées par famille** (Mainframe z/OS,
+Données, Fichiers, Contrôle), alimenté par le schéma. On ajoute une tâche par **clic** ou
+par **glisser-déposer sur le canvas**, avec ses **champs par défaut**. Les tâches **différées**
+(`zos-db2`, `zos-endevor`) apparaissent **désactivées** (« Soon »). Une **recherche** filtre
+le catalogue.
+
+{/* 📸 CAPTURE À AJOUTER — Catalogue de tâches : familles repliables, une recherche active,
+    et les entrées « Soon » grisées.
+    Fichier : static/img/studio/catalog.png
+    Puis remplacer ce bloc par : ![Catalogue de tâches](/img/studio/catalog.png) */}
+
+---
+
+## Insérer une tâche sur un lien
+
+Un bouton **« + »** au milieu de chaque lien permet d'**insérer une tâche entre deux tâches**
+(façon Kestra) : cliquer ouvre un **sélecteur**, ou l'on **dépose** une tâche du catalogue
+directement sur le « + ». La nouvelle tâche est insérée (`A → N → B`) et sélectionnée.
+
+{/* 📸 CAPTURE À AJOUTER — Le bouton « + » sur un lien, idéalement avec le sélecteur de
+    tâche (popover) ouvert.
+    Fichier : static/img/studio/insert-on-edge.png
+    Puis remplacer ce bloc par : ![Insertion sur un lien](/img/studio/insert-on-edge.png) */}
+
+---
+
+## Panneau de propriétés
+
+Sélectionner une tâche ouvre un **formulaire piloté par le schéma** : un champ par entrée
+(liste déroulante pour les `enum`, booléens, nombres, texte) avec **validation des champs
+requis**. Toute modification se répercute en YAML. Pour un **champ de type secret**, le
+panneau propose les **secrets connus** (noms seulement) et insère le format **`${secret:NOM}`**.
+Le champ **`id`** est **renommable** (les dépendances `needs` sont repointées automatiquement).
+
+{/* 📸 CAPTURE À AJOUTER — Panneau de propriétés d'une tâche : champ id, quelques champs
+    (dont un enum), et le sélecteur de secret sur un champ sensible.
+    Fichier : static/img/studio/properties.png
+    Puis remplacer ce bloc par : ![Panneau de propriétés](/img/studio/properties.png) */}
+
+---
+
+## Entête du workflow
+
+L'**entête** (tout ce qui précède `steps:`) est matérialisée par un **nœud « Workflow »** en
+tête du canvas. Le sélectionner ouvre un panneau pour éditer **name**, **description**, les
+**inputs** (paramètres typés : type, required, default, description — ajout/suppression) et
+les **variables d'environnement** (`env`). Les nouveaux blocs sont insérés **avant `steps:`**.
+
+{/* 📸 CAPTURE À AJOUTER — Le nœud « Workflow » sélectionné + le panneau d'entête montrant
+    name/description, la liste des inputs et la section env.
+    Fichier : static/img/studio/header-panel.png
+    Puis remplacer ce bloc par : ![Entête du workflow](/img/studio/header-panel.png) */}

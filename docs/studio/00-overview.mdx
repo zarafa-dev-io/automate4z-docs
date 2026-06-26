@@ -1,0 +1,70 @@
+---
+sidebar_position: 1
+title: Vue d'ensemble
+---
+
+# Studio — l'interface web
+
+**Studio** est l'interface web d'automate4z, servie localement par le binaire `a4z`.
+Elle permet d'éditer, valider, exécuter et suivre des workflows — en mode **texte**
+(éditeur YAML) ou **no-code** (canvas visuel) — sans rien installer de plus : la SPA
+est **embarquée dans le binaire**.
+
+{/* 📸 CAPTURE À AJOUTER — Vue globale de Studio : en-tête (sélecteur d'espace,
+    onglets Editor / Executions), liste des workflows à gauche, éditeur + DAG au centre.
+    Fichier : static/img/studio/overview.png
+    Puis remplacer ce bloc par : ![Vue d'ensemble de Studio](/img/studio/overview.png) */}
+
+---
+
+## Lancer Studio
+
+```bash
+a4z serve
+```
+
+`a4z serve` démarre un serveur web local et **ouvre le navigateur** sur l'interface.
+
+| Option | Défaut | Description |
+|--------|--------|-------------|
+| `--host` | `127.0.0.1` | Interface d'écoute (loopback uniquement par défaut) |
+| `--port` | `4500` | Port TCP (`0` choisit un port libre) |
+| `--workspace` | répertoire courant | Espace de travail servi (dossier de workflows) |
+| `--no-open` | — | Ne pas ouvrir le navigateur automatiquement |
+
+### Modèle de sécurité
+
+- Le serveur **se lie à `127.0.0.1`** par défaut. Tout `--host` non-loopback affiche un
+  avertissement (il n'y a **pas d'authentification réseau**).
+- Un **jeton de session** aléatoire est généré et inclus dans l'URL ouverte ; toute
+  requête sans jeton valide reçoit `401`. Les méthodes mutantes sont protégées contre le
+  CSRF.
+- `a4z serve` est un **binaire one-shot** : pas de daemon, pas de service.
+
+---
+
+## L'en-tête
+
+L'en-tête de Studio regroupe :
+
+- le **sélecteur d'espace de travail** (ouvrir / basculer entre plusieurs dossiers — voir
+  [Espaces de travail](./espaces)) ;
+- la bascule **Editor / Executions** (édition vs [historique des exécutions](./historique)) ;
+- le thème clair / sombre et la version du binaire.
+
+{/* 📸 CAPTURE À AJOUTER — Gros plan de l'en-tête : sélecteur d'espace + onglets
+    Editor/Executions + bascule de thème.
+    Fichier : static/img/studio/header.png
+    Puis remplacer ce bloc par : ![En-tête de Studio](/img/studio/header.png) */}
+
+---
+
+## Deux façons d'éditer
+
+| Mode | Description |
+|------|-------------|
+| **Code** | [Éditeur YAML](./editeur) CodeMirror avec validation, autocomplétion et vue DAG en lecture seule. |
+| **No-code** | [Canvas visuel](./no-code) : catalogue de tâches, glisser-déposer, panneau de propriétés, édition de l'entête — le tout réécrit le YAML en préservant vos commentaires. |
+
+Les deux vues partagent la **même représentation interne** : passer de l'une à l'autre
+ne perd jamais le contenu.
