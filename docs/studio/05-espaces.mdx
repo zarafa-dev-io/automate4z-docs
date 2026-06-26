@@ -1,0 +1,48 @@
+---
+sidebar_position: 6
+title: Espaces de travail
+---
+
+# Multi-espaces de travail
+
+Studio peut gérer **plusieurs espaces de travail** (dossiers de workflows) dans une même
+session. Le **sélecteur d'espace** dans l'en-tête permet de **basculer** entre eux et d'en
+**ouvrir** un nouveau par **chemin local**.
+
+{/* 📸 CAPTURE À AJOUTER — Sélecteur d'espace ouvert : liste des espaces + le champ
+    « ouvrir un espace par chemin ».
+    Fichier : static/img/studio/workspaces.png
+    Puis remplacer ce bloc par : ![Sélecteur d'espace](/img/studio/workspaces.png) */}
+
+---
+
+## Ouvrir & basculer
+
+- L'espace de **lancement** (`--workspace`, ou le répertoire courant) est l'espace `default`.
+- Le bouton **+** ouvre un champ pour saisir un **chemin de dossier** ; le serveur vérifie
+  qu'il existe puis l'ajoute et bascule dessus.
+- **Basculer** réinitialise le document ouvert et **recharge la liste des workflows** (et les
+  exécutions si la vue est ouverte).
+
+:::note Pourquoi un chemin ?
+Le navigateur ne peut pas ouvrir un sélecteur de dossier local. Comme `a4z serve` est lié à
+**loopback** et sert déjà des fichiers locaux, l'ouverture d'un espace se fait en **saisissant
+son chemin**.
+:::
+
+---
+
+## Cloisonnement
+
+| Élément | Cloisonné par espace ? |
+|--------|------------------------|
+| **Découverte** (liste des workflows) | ✅ oui |
+| **Lecture / sauvegarde** des fichiers | ✅ oui |
+| **Exécutions** (historique, Gantt, reprise) | ✅ oui (une base `.automate4z/runs.db` par espace) |
+| **Artefacts** | ✅ oui |
+| **Secrets** | ⚠️ **non** — globaux (trousseau de la machine) |
+
+:::info Secrets globaux
+Les secrets vivent dans le **trousseau de l'OS** (par machine), partagés entre les espaces :
+un identifiant (token z/OS, etc.) est généralement commun aux projets d'un même utilisateur.
+:::
