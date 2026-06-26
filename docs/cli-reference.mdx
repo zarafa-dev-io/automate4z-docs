@@ -28,6 +28,25 @@ a4z run mon-workflow.yml --keep-runs 20
 | `--log-format` | `text` | Format de sortie : `text` ou `json` |
 | `--parallelism/-p` | `4` | Nombre max de steps simultanés |
 | `--keep-runs` | `50` | Nombre de répertoires de run à conserver |
+| `--ui` | `false` | Ouvre la **surface App** (mode App) au lieu d'exécuter — voir [Mode App](./app/lancer) |
+| `--no-open` | `false` | Avec `--ui`, ne pas ouvrir le navigateur automatiquement |
+
+---
+
+## `a4z app launcher <workflow.yml>`
+
+Génère un **lanceur double-cliquable** pour l'App d'un workflow (le workflow doit
+déclarer un bloc [`ui:`](./app/declarer-ui)). Double-cliquer le fichier ouvre
+l'App dans le navigateur (`a4z run … --ui`), **sans terminal**.
+
+```bash
+a4z app launcher jeu-donnees-test.yml
+a4z app launcher jeu-donnees-test.yml -o ~/Bureau
+```
+
+| Flag | Défaut | Description |
+|------|--------|-------------|
+| `--output/-o` | dossier du workflow | Répertoire où écrire le lanceur (`.cmd` / `.command` / `.desktop` selon l'OS) |
 
 ---
 

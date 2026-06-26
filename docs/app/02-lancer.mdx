@@ -1,0 +1,78 @@
+---
+sidebar_position: 3
+title: Lancer une App
+---
+
+# Lancer une App
+
+Une fois le bloc [`ui:`](./declarer-ui) déclaré dans le workflow, deux points
+d'entrée ouvrent la surface App — tous deux **locaux** et **sécurisés par jeton**.
+
+## `a4z run --ui`
+
+```bash
+a4z run jeu-donnees-test.yml --ui
+```
+
+`--ui` ouvre la **surface App verrouillée** du workflow au lieu de l'exécuter en
+ligne de commande : le serveur local démarre sur `127.0.0.1`, le navigateur
+s'ouvre **directement sur l'App** (jeton inclus), et l'opérateur n'a plus qu'à
+remplir le formulaire.
+
+| Flag | Défaut | Description |
+|------|--------|-------------|
+| `--ui` | `false` | Ouvre la surface App au lieu d'exécuter le workflow. |
+| `--no-open` | `false` | Ne pas ouvrir le navigateur automatiquement (affiche l'URL). |
+
+Le workflow **doit** déclarer un bloc `ui:` ; sinon la commande s'arrête avec une
+erreur explicite.
+
+:::info Mono-workflow
+En mode App, le serveur ne sert **que** ce workflow : l'opérateur ne peut pas en
+lancer un autre, ni accéder à l'éditeur, au canevas, aux secrets ou à
+l'historique — ni dans l'UI, ni au niveau des requêtes réseau.
+:::
+
+## Lanceur double-cliquable
+
+Pour un opérateur **sans terminal**, générez un **lanceur** que l'on ouvre d'un
+double-clic :
+
+```bash
+a4z app launcher jeu-donnees-test.yml
+```
+
+La commande écrit, à côté du workflow, un fichier **adapté au système** :
+
+| OS | Fichier généré | Comportement |
+|----|----------------|--------------|
+| **Windows** | `<App>.cmd` | Double-clic → lance `a4z run … --ui`. |
+| **macOS** | `<App>.command` (exécutable) | Double-clic → ouvre l'App. |
+| **Linux** | `<App>.desktop` (`Terminal=false`) | Double-clic → ouvre l'App. |
+
+Le fichier est nommé d'après le **titre de l'App** (`ui.name`). Un double-clic
+ouvre directement la bonne App dans le navigateur, **jeton inclus, sans étape
+manuelle**.
+
+| Flag | Défaut | Description |
+|------|--------|-------------|
+| `--output` / `-o` | dossier du workflow | Répertoire où écrire le lanceur. |
+
+```bash
+# Déposer le lanceur sur le Bureau de l'opérateur
+a4z app launcher jeu-donnees-test.yml -o ~/Bureau
+```
+
+## Provisionnement par l'IT
+
+Le vrai levier d'adoption du mode App est le **provisionnement**, à préparer par
+l'équipe Plateforme / IT sur le poste de l'opérateur (chantier de
+packaging / onboarding, distinct de l'UI) :
+
+- le binaire **`a4z`** installé ;
+- la **connexion z/OSMF** configurée (profil) ;
+- les **secrets** déposés dans le **trousseau de l'OS** (via [`a4z secrets`](../cli-reference)
+  ou l'équivalent Studio) — l'opérateur **ne les saisit jamais** ;
+- éventuellement le **lanceur** déjà déposé sur le Bureau.
+
+L'opérateur n'a alors plus qu'à **double-cliquer** et remplir le formulaire.

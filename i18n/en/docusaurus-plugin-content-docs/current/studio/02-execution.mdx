@@ -1,0 +1,60 @@
+---
+sidebar_position: 3
+title: Execution & monitoring
+---
+
+# Run a workflow
+
+From the editor, the **run panel** lets you launch the open workflow
+**in-process** (no `a4z` subprocess).
+
+{/* 📸 SCREENSHOT TO ADD — Run panel with the Run button and, where applicable,
+    the required-parameters form.
+    File: static/img/studio/run-panel.png
+    Then replace this block with: ![Run panel](/img/studio/run-panel.png) */}
+
+---
+
+## Refusals & parameters
+
+Before launching, the server checks:
+
+- **invalid workflow** → the run is refused and the errors are pointed out;
+- **missing required parameters** → a **form** prompts for the values (`inputs`);
+- **undefined `${secret:NAME}`** → the run is refused.
+
+{/* 📸 SCREENSHOT TO ADD — Required-parameters form (one or two `inputs` fields).
+    File: static/img/studio/run-inputs.png
+    Then replace this block with: ![Parameters form](/img/studio/run-inputs.png) */}
+
+---
+
+## Live monitoring
+
+Once launched, **live monitoring** consumes the engine's **NDJSON** event stream
+and shows the lifecycle as it happens:
+
+- per-task status, **RC** (return/condition code), `n/total` progress, durations;
+- **scrolling logs** (with secret masking inherited from the stream);
+- final status + **overall RC**.
+
+The **DAG view reflects each node's live status** (success / failure / cancelled /
+skipped / running), and a **Gantt chart** updates with a "now" marker (see
+[History & Gantt](./historique)).
+
+{/* 📸 SCREENSHOT TO ADD — Live run view: task list with statuses/RC and logs;
+    ideally with the status-colored DAG above.
+    File: static/img/studio/run-live.png
+    Then replace this block with: ![Live monitoring](/img/studio/run-live.png) */}
+
+---
+
+## Results & artifacts
+
+When the run finishes, the **per-task outputs** and the produced **artifacts**
+(files detected in the workspace, e.g. an archive) appear with **download links**
+— including for a failed run (partial outputs remain viewable).
+
+{/* 📸 SCREENSHOT TO ADD — Artifacts section with one or more download links.
+    File: static/img/studio/run-artifacts.png
+    Then replace this block with: ![Artifacts](/img/studio/run-artifacts.png) */}

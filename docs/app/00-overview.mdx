@@ -1,0 +1,63 @@
+---
+sidebar_position: 1
+title: Vue d'ensemble
+---
+
+# Mode App — la surface opérateur
+
+Le **mode App** est une variante **verrouillée** de l'interface web d'automate4z,
+destinée aux **opérateurs non-développeurs** (testeurs, analystes). Là où
+[Studio](../studio/overview) expose l'édition complète (éditeur YAML, canvas, DAG,
+secrets, historique), une **App** ne montre qu'**un seul workflow** sous la forme
+d'un **formulaire guidé** : on saisit des paramètres, on lance, on suit une
+progression lisible, on récupère le résultat — **sans YAML, sans connaissance du
+mainframe**.
+
+{/* 📸 CAPTURE À AJOUTER — La surface App : bandeau « automate4z · App · local »,
+    carte avec le formulaire (Table source, période, bascule Anonymiser), bouton Lancer.
+    Fichier : static/img/app/overview.png
+    Puis remplacer ce bloc par : ![Surface App](/img/app/overview.png) */}
+
+## À qui ça s'adresse
+
+| Rôle | Surface | Ce qu'il fait |
+|------|---------|---------------|
+| **Auteur** (développeur) | [Studio](../studio/overview) | Écrit le workflow **et** déclare son App via le bloc [`ui:`](./declarer-ui). |
+| **Plateforme / IT** | (mise en place) | Provisionne `a4z`, la connexion z/OSMF et les **secrets** sur le poste de l'opérateur. |
+| **Opérateur** (non-développeur) | **App** | Remplit le formulaire, lance, télécharge le livrable. |
+
+## Le parcours opérateur
+
+1. **Lancement** sans terminal (un [lanceur double-cliquable](./lancer#lanceur-double-cliquable) ou `a4z run <wf> --ui`).
+2. **Formulaire** — saisie des paramètres (texte, nombre, bascule, liste, date, fichier) avec aide et validation **sans jargon**.
+3. **Progression** — les étapes du traitement, retraduites en **libellés lisibles**, sans codes retour ni logs techniques.
+4. **Résultats** — un résumé simple, un aperçu (colonnes personnelles **masquées**) et le **téléchargement** du livrable.
+
+Tout est piloté par un seul bloc **`ui:`** ajouté dans le YAML du workflow — voir
+**[Déclarer une UI](./declarer-ui)**.
+
+## Principes & sécurité
+
+Le mode App hérite des garanties d'`a4z serve` :
+
+- **Local mono-utilisateur** : écoute sur **`127.0.0.1`** uniquement, **jeton de
+  session** dans l'URL ouverte ; aucune requête sans jeton n'est servie (`401`).
+- **Aucune donnée ne quitte le poste** ; binaire unique, zéro infrastructure.
+- **Secrets résolus par le binaire** (trousseau de l'OS, pré-provisionnés par
+  l'IT). L'opérateur **ne saisit jamais** de secret dans l'App.
+- **Surface réellement verrouillée** : non seulement l'UI ne montre aucune
+  affordance Studio (éditeur, canvas, liste de workflows, panneau secrets,
+  historique brut), mais le serveur **refuse aussi ces endpoints au niveau du
+  réseau** en mode App. L'opérateur ne peut lancer **que** le workflow ciblé.
+
+:::info Gouvernance
+Une App offre une **porte d'entrée gouvernée et répétable** pour des opérations
+sensibles (p. ex. constituer un jeu de données de test anonymisé), en
+remplacement de manipulations manuelles ad hoc — à l'appui des exigences
+RGPD / PCI / audit.
+:::
+
+## Étapes suivantes
+
+- **[Déclarer une UI](./declarer-ui)** — écrire le bloc `ui:` dans le workflow (le cœur du sujet).
+- **[Lancer une App](./lancer)** — `a4z run --ui` et le lanceur double-cliquable.
