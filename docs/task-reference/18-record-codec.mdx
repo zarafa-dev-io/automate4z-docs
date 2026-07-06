@@ -1,0 +1,65 @@
+---
+sidebar_position: 18
+title: record-decode / record-encode
+---
+
+# `record-decode` / `record-encode` — Enregistrements fixes ↔ NDJSON
+
+Ces deux tâches font le pont entre les fichiers de données mainframe et [`pii-anonymize`](pii-anonymize) dans le workflow canonique `constitute-test-dataset` : `record-decode` découpe des enregistrements texte à longueur fixe en NDJSON selon le layout [`copybook-schema`](copybook-schema) ; `record-encode` est son inverse exact (**round-trip garanti octet pour octet**).
+
+```yaml
+- id: parse_layout
+  uses: copybook-schema
+  with: { input: copybook/customer.cpy, output: work/layout.json }
+
+- id: decode
+  uses: record-decode
+  with:
+    schema: ${{ steps.parse_layout.outputs.output }}
+    input: data/customers.txt        # enregistrements fixes, un par ligne (z/OSMF mode texte)
+    output: work/customers.ndjson
+
+# … pii-anonymize …
+
+- id: encode
+  uses: record-encode
+  with:
+    schema: ${{ steps.parse_layout.outputs.output }}
+    input: work/customers.anon.ndjson
+    output: out/customers.anon.txt
+```
+
+## Inputs (identiques pour les deux tâches)
+
+| Champ | Type | Requis | Description |
+|-------|------|--------|-------------|
+| `schema` | string | oui | Layout JSON produit par `copybook-schema`. |
+| `input` | string | oui | Fichier d'entrée (enregistrements fixes pour decode, NDJSON pour encode). |
+| `output` | string | oui | Fichier de sortie. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `output` | string | Chemin du fichier écrit. |
+| `records` | integer | Nombre d'enregistrements traités. |
+
+## Correspondance
+
+- Les groupes deviennent des objets JSON imbriqués ; le groupe 01 unique est déballé.
+- Les tables `OCCURS` deviennent des tableaux (toutes les occurrences, dans l'ordre).
+- Les champs `FILLER` sont ignorés au décodage (remplissage, pas des données) et reviennent en espaces à l'encodage.
+- Les champs `REDEFINES` sont ignorés (la vue de base est décodée).
+- Alphanumériques : espaces de fin retirés au décodage, cadrage à gauche complété d'espaces à l'encodage. Une ligne d'entrée courte est re-complétée (les transferts en mode texte suppriment les blancs de fin) ; une ligne plus longue que le layout échoue.
+- Les numériques sont émis comme **chaînes JSON** (aucun arrondi flottant) : zéros de tête retirés et point décimal implicite matérialisé au décodage (`0012345` avec `V99` → `"123.45"`), replié complété de zéros à l'encodage.
+
+## Enveloppe de support v1 (stricte)
+
+Un layout non supporté échoue **au chargement**, en nommant le champ et la raison — un diagnostic précis vaut mieux qu'un jeu silencieusement faux :
+
+- Usage `DISPLAY` uniquement (pas de stockage binaire `COMP`/`COMP-3` dans des enregistrements texte).
+- Numériques non signés (pas de `S` dans la PICTURE).
+- `OCCURS` fixe (pas de `DEPENDING ON`).
+- Catégories : numérique, alphanumérique, alphabétique (pas de pictures éditées).
+
+À l'exécution, un champ manquant, un champ inconnu, un mauvais nombre d'occurrences ou une valeur qui ne tient pas échoue en nommant le champ et le numéro d'enregistrement.

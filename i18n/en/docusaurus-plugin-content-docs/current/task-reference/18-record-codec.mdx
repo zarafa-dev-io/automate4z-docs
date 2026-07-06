@@ -1,0 +1,65 @@
+---
+sidebar_position: 18
+title: record-decode / record-encode
+---
+
+# `record-decode` / `record-encode` — Fixed records ↔ NDJSON
+
+These two tasks bridge mainframe data files and [`pii-anonymize`](pii-anonymize) in the canonical `constitute-test-dataset` workflow: `record-decode` slices fixed-length text records into NDJSON per the [`copybook-schema`](copybook-schema) layout; `record-encode` is its exact inverse (**byte-identical round-trip guaranteed**).
+
+```yaml
+- id: parse_layout
+  uses: copybook-schema
+  with: { input: copybook/customer.cpy, output: work/layout.json }
+
+- id: decode
+  uses: record-decode
+  with:
+    schema: ${{ steps.parse_layout.outputs.output }}
+    input: data/customers.txt        # fixed records, one per line (z/OSMF text mode)
+    output: work/customers.ndjson
+
+# … pii-anonymize …
+
+- id: encode
+  uses: record-encode
+  with:
+    schema: ${{ steps.parse_layout.outputs.output }}
+    input: work/customers.anon.ndjson
+    output: out/customers.anon.txt
+```
+
+## Inputs (identical for both tasks)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `schema` | string | yes | Layout JSON produced by `copybook-schema`. |
+| `input` | string | yes | Input file (fixed records for decode, NDJSON for encode). |
+| `output` | string | yes | Output file. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `output` | string | Path of the written file. |
+| `records` | integer | Number of records processed. |
+
+## Mapping
+
+- Groups become nested JSON objects; the single `01` record group is unwrapped.
+- OCCURS tables become arrays (all occurrences, in order).
+- `FILLER` fields are skipped on decode (padding, not data) and come back as spaces on encode.
+- `REDEFINES` fields are skipped (the base view is decoded).
+- Alphanumerics: trailing spaces trimmed on decode, left-aligned space-padded on encode. A short input line is re-padded (text-mode transfers strip trailing blanks); a line longer than the layout fails.
+- Numerics are emitted as **JSON strings** (no float rounding): leading zeros stripped and the implied decimal point materialized on decode (`0012345` with `V99` → `"123.45"`), folded back zero-padded on encode.
+
+## v1 support envelope (strict)
+
+An unsupported layout fails **at load**, naming the field and the reason — a precise diagnostic beats a silently wrong dataset:
+
+- `DISPLAY` usage only (no `COMP`/`COMP-3` binary storage in text records).
+- Unsigned numerics (no `S` in PIC).
+- Fixed OCCURS (no `DEPENDING ON`).
+- Categories: numeric, alphanumeric, alphabetic (no edited pictures).
+
+At execution, a missing field, an unknown field, a wrong occurrence count or a value that does not fit fails naming the field and the record number.
