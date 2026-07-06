@@ -5,7 +5,7 @@ title: Overview
 
 # Built-in tasks
 
-automate4z ships **16 built-in tasks** in the `a4z` binary, all **Stable**.
+automate4z ships **21 built-in tasks** in the `a4z` binary, all **Stable**.
 
 ## Catalogue
 
@@ -34,6 +34,23 @@ automate4z ships **16 built-in tasks** in the `a4z` binary, all **Stable**.
 | [`zos-jobs`](zos-jobs) | JCL submission via z/OSMF, monitoring, SYSOUT retrieval |
 | [`zos-datasets`](zos-datasets) | Operations on PDS, sequential datasets, USS |
 | [`z-deps`](z-deps) | Dependency resolution for COBOL/copybooks |
+
+### Mainframe data tasks — test datasets (4)
+
+The canonical `constitute-test-dataset` workflow: from the copybook to the anonymized dataset.
+
+| Task | Domain |
+|------|--------|
+| [`copybook-schema`](copybook-schema) | JSON layout of a COBOL copybook (offsets, usages, lengths) |
+| [`record-decode`](record-codec) | Fixed records → NDJSON per the layout |
+| [`record-encode`](record-codec) | NDJSON → fixed records (round-trip guaranteed) |
+| [`pii-anonymize`](pii-anonymize) | Deterministic pseudonymization with declarative rules |
+
+### AI task (1)
+
+| Task | Domain |
+|------|--------|
+| [`ai-prompt`](ai-prompt) | Consultative LLM call (profile-governed endpoints) |
 
 :::note
 The `zos-db2` and `zos-endevor` tasks, initially planned, are **deferred**: they cannot be validated without access to an enterprise LPAR with the appropriate licensed products. In the meantime, DB2 access is possible via a batch job (`zos-jobs`) or `shell`.

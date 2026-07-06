@@ -1,0 +1,58 @@
+---
+sidebar_position: 17
+title: copybook-schema
+---
+
+# `copybook-schema` — Layout d'un copybook COBOL
+
+Dérive un **schéma de layout JSON** — offsets physiques, USAGE, longueurs en octets — d'un copybook COBOL, une fois toutes les inclusions `COPY` résolues et les `REPLACING` appliqués. 100 % local, aucune connectivité z/OSMF. Sémantiques d'offsets/longueurs alignées sur **IBM Enterprise COBOL**.
+
+```yaml
+- id: parse_layout
+  uses: copybook-schema
+  with:
+    input: copybook/customer.cpy
+    search_paths: [copybook/commun]
+    output: work/layout.json
+```
+
+## Inputs
+
+| Champ | Type | Requis | Description |
+|-------|------|--------|-------------|
+| `input` | string | oui | Copybook d'entrée, relatif au répertoire du workflow. |
+| `search_paths` | array | non | Répertoires de résolution des `COPY`. Le répertoire du copybook d'entrée est toujours inclus. |
+| `replacing` | array | non | Règles `REPLACING` de haut niveau appliquées à tout le copybook (voir ci-dessous). |
+| `output` | string | oui | Fichier JSON de sortie. |
+
+Chaque entrée `replacing` :
+
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `from` | string | — | Texte à remplacer. |
+| `to` | string | — | Texte de remplacement. |
+| `word` | bool | `false` | Remplace un text word entier au lieu d'une sous-chaîne. |
+| `leading` | bool | `false` | Remplace le préfixe de chaque mot. |
+| `trailing` | bool | `false` | Remplace le suffixe de chaque mot. |
+
+Par défaut `from` est apparié en pseudo-texte (sous-chaîne), ce qui supporte l'idiome de préfixe `:PFX:` : `{ from: ":PFX:", to: "CUST" }` transforme `:PFX:-NAME` en `CUST-NAME`.
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `output` | string | Chemin du fichier JSON écrit. |
+| `totalLength` | integer | Longueur totale de l'enregistrement en octets. |
+| `recordCount` | integer | Nombre d'enregistrements de niveau 01. |
+
+## Fichier produit
+
+Le document `{ meta, layout }` : `meta` porte le copybook d'entrée, la longueur totale, les copybooks inclus et la version du parseur ; `layout.root` décrit l'arbre des champs — nom, niveau, `picture`, `usage`, `category` (`numeric`, `alphanumeric`…), `offset`, `length`, `digits`/`scale`/`signed` pour les numériques, `occurs`, `redefines`, conditions de niveau 88. Le bloc `layout` est **déterministe** : à entrée égale, JSON identique octet pour octet.
+
+Ce fichier alimente [`record-decode`/`record-encode`](record-codec) et la validation de format de [`pii-anonymize`](pii-anonymize).
+
+## Comportement
+
+- **Deux phases** : résolution texte (`COPY`, `REPLACING`, récursion, détection de cycle) puis analyse structurelle (hiérarchie de niveaux, clauses, offsets/longueurs).
+- **Mode strict** : copybook introuvable, cycle `COPY` ou syntaxe invalide **font échouer le step** avec un diagnostic localisé (copybook, ligne, chaîne d'inclusion) — jamais de schéma silencieusement incomplet.
+- v1 : format fixe uniquement. `SYNCHRONIZED`, niveau 66 `RENAMES` et format libre sont hors périmètre.

@@ -1,0 +1,88 @@
+---
+sidebar_position: 20
+title: ai-prompt
+---
+
+# `ai-prompt` — Appel LLM (consultatif)
+
+Envoie un prompt synchrone unique à un endpoint LLM nommé et écrit la réponse texte dans un fichier et/ou une variable de step. **Consultatif uniquement** : la tâche ne fait jamais d'assertion sur la sortie (non déterministe) et ne conditionne pas un run.
+
+Les endpoints sont déclarés **exclusivement dans le profil a4z** — jamais d'URL libre ni de clé API dans le YAML du workflow — pour garder la surface d'exfiltration sous contrôle de configuration.
+
+## Configuration (profil)
+
+Section `ai:` de `~/.automate4z/profiles/<name>.yml` :
+
+```yaml
+ai:
+  enabled: true                          # opt-in, false par défaut
+  context_files_policy: anonymized-only  # free | anonymized-only
+  max_context_bytes: 262144              # optionnel — budget contexte (défaut 256 KiB)
+  endpoints:
+    - name: passerelle-interne           # nom logique référencé par les workflows
+      provider: openai-compatible
+      base_url: https://llm-gw.internal/v1
+      api_key: ${secret:LLM_GW_KEY}      # référence ${secret:...} uniquement
+      models: [mistral-large]            # allowlist optionnelle
+    - name: claude
+      provider: anthropic                # URL figée, base_url interdit
+      api_key: ${secret:ANTHROPIC_API_KEY}
+```
+
+Règles vérifiées au chargement : `api_key` n'accepte **que** `${secret:NOM}` (clé littérale refusée) ; `base_url` **requis** pour `openai-compatible` et **interdit** pour les providers nommés (`anthropic`, `openai`, `gemini` — URLs figées, non redirigeables) ; `models:` présent = tout modèle hors liste refusé à la validation.
+
+## Step
+
+```yaml
+- id: explain_abend
+  uses: ai-prompt
+  with:
+    endpoint: passerelle-interne  # requis — nom d'endpoint déclaré
+    model: mistral-large          # requis — vérifié contre l'allowlist
+    system: |                     # optionnel
+      Tu es un expert z/OS qui explique les incidents batch.
+    prompt: |                     # requis
+      Explique la cause probable de cet abend et une piste de correction.
+    context_files:                # optionnel — voir ci-dessous
+      - ${{ steps.fetch_spool.outputs.output_file }}
+      - path: report.json
+        truncate: tail            # troncature opt-in pour tenir dans le budget
+    output_file: out/explication.md   # optionnel
+    output_var: explication           # optionnel — interpolable en aval
+    max_tokens: 1500              # optionnel — défaut 1024
+    temperature: 0.2              # optionnel — défaut 0.2 (usage explicatif)
+    timeout: 60s                  # optionnel — défaut 120s
+```
+
+Au moins l'un de `output_file` / `output_var` est requis. `url:`, `api_key:` et headers libres sont **interdits par construction** au niveau du step.
+
+## Fichiers en contexte (`context_files`)
+
+Chaque entrée (chemin ou objet `{path, truncate}`) est lue et injectée dans le message utilisateur **avant** le prompt, en bloc délimité et attribué, dans l'ordre de déclaration.
+
+- **Texte seul** : octet nul ou UTF-8 invalide dans les 8 premiers KiB → `ai.binary_context_file`. Pas de conversion EBCDIC ici (responsabilité des steps amont).
+- **Budget** : 256 KiB au total par défaut. Dépassement sans `truncate` → `ai.context_too_large` (total, budget, taille par fichier) — jamais de coupe silencieuse. `truncate: head|tail` opt-in par fichier, tracé.
+- **Confinement** : chemins sous le répertoire du workflow, symlinks résolus et re-vérifiés.
+- **Aucun contenu dans les logs** : seuls noms, tailles et empreintes SHA-256 sont journalisés.
+
+### Gouvernance — `context_files_policy`
+
+Envoyer un fichier à un LLM **est** une sortie de données. Deux modes, appliqués **statiquement sur le DAG** par `a4z validate` :
+
+- **`free`** (défaut) : tout fichier du workspace est éligible.
+- **`anonymized-only`** (recommandé en environnement régulé) : chaque entrée doit interpoler la sortie d'un step amont **anonymisant** — soit marqué `anonymizes: true`, soit une tâche qui l'affirme par construction ([`pii-anonymize`](pii-anonymize)). Chemin littéral ou origine non anonymisante → `ai.policy_violation` (fichier + step d'origine).
+
+## Sorties et événements
+
+- `output_file` : texte brut de la réponse. `output_var` : même contenu dans le contexte du DAG (`${{ steps.<id>.outputs.<var> }}`), **plafonné à 64 KiB** — au-delà, la validation exige `output_file` (`ai.output_too_large`).
+- Avec `a4z run --events ndjson`, la tâche émet des événements `task_event` versionnés, **métadonnées uniquement** : `ai.request` (endpoint, provider, modèle, empreintes des fichiers contexte), `ai.response` (tokens entrée/sortie, durée, raison d'arrêt), `ai.warning` (troncature de contexte, retries).
+
+## Robustesse
+
+- **Timeout** : `timeout` (défaut 120 s) borne la requête entière avec annulation propre ; timeout de connexion distinct (10 s).
+- **Retry** : uniquement sur **429 et 5xx** — 2 tentatives supplémentaires max, `Retry-After` prioritaire, sinon backoff exponentiel à equal jitter (aléa dans `[d/2, d]`, base 1 s, plafond 30 s). Chaque retry émet un `ai.warning`. Les 4xx (ex. 401) échouent immédiatement.
+- Corps d'erreur provider tronqués à 500 caractères (ils peuvent contenir l'écho du prompt).
+
+## Erreurs normalisées
+
+Au chargement (`a4z lint`/`validate`) : `ai.disabled`, `ai.endpoint_unknown`, `ai.model_not_allowed`, `ai.no_output`, `ai.output_too_large`, `ai.policy_violation`. À l'exécution : `ai.context_too_large`, `ai.binary_context_file`, `ai.provider_error`. Le contenu des prompts et les clés API n'apparaissent jamais dans les logs ni les événements.

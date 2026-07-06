@@ -1,0 +1,58 @@
+---
+sidebar_position: 17
+title: copybook-schema
+---
+
+# `copybook-schema` — COBOL copybook layout
+
+Derives a JSON **layout schema** — physical offsets, USAGE, byte lengths — from a COBOL copybook, once every `COPY` inclusion is resolved and every `REPLACING` applied. 100% local, no z/OSMF connectivity. Offset/length semantics aligned with **IBM Enterprise COBOL**.
+
+```yaml
+- id: parse_layout
+  uses: copybook-schema
+  with:
+    input: copybook/customer.cpy
+    search_paths: [copybook/common]
+    output: work/layout.json
+```
+
+## Inputs
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `input` | string | yes | Entry copybook, relative to the workflow directory. |
+| `search_paths` | array | no | Directories searched to resolve `COPY` statements. The entry copybook's own directory is always included. |
+| `replacing` | array | no | Top-level `REPLACING` rules applied to the whole copybook (see below). |
+| `output` | string | yes | Output JSON file. |
+
+Each `replacing` entry:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `from` | string | — | Text to replace. |
+| `to` | string | — | Replacement text. |
+| `word` | bool | `false` | Match a whole text word instead of a substring. |
+| `leading` | bool | `false` | Replace the leading prefix of each word. |
+| `trailing` | bool | `false` | Replace the trailing suffix of each word. |
+
+By default `from` is matched as pseudo-text (a substring), which supports the `:PFX:` prefix idiom: `{ from: ":PFX:", to: "CUST" }` turns `:PFX:-NAME` into `CUST-NAME`.
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `output` | string | Path of the written JSON file. |
+| `totalLength` | integer | Total record length in bytes. |
+| `recordCount` | integer | Number of level-01 records. |
+
+## Produced file
+
+The `{ meta, layout }` document: `meta` carries the entry copybook, total length, included copybooks and parser version; `layout.root` describes the field tree — name, level, `picture`, `usage`, `category` (`numeric`, `alphanumeric`…), `offset`, `length`, `digits`/`scale`/`signed` for numerics, `occurs`, `redefines`, level-88 conditions. The `layout` block is **deterministic**: identical input → byte-identical JSON.
+
+This file feeds [`record-decode`/`record-encode`](record-codec) and the format validation of [`pii-anonymize`](pii-anonymize).
+
+## Behavior
+
+- **Two phases**: text resolution (`COPY`, `REPLACING`, recursion, cycle detection) then structural parse (level hierarchy, clauses, offsets/lengths).
+- **Strict mode**: a missing copybook, a `COPY` cycle or invalid syntax **fails the step** with a located diagnostic (copybook, line, inclusion chain) — never a silently incomplete schema.
+- v1: fixed format only. `SYNCHRONIZED`, level-66 `RENAMES` and free format are out of scope.

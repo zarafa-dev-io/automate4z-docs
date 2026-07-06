@@ -1,0 +1,110 @@
+---
+sidebar_position: 19
+title: pii-anonymize
+---
+
+# `pii-anonymize` — Test-dataset anonymization
+
+:::caution Pseudonymization, not anonymization
+This task provides tooled **pseudonymization**: deterministic, keyed transformations that remove direct identifiers while keeping the dataset usable for testing. It is **not** irreversible anonymization in the regulatory sense (CNIL distinction): with the key — or by brute force when the input space is small — original values can be linked back. Treat the key as a production secret and the output as pseudonymized data.
+:::
+
+Transforms an NDJSON file (one JSON record per line, typically [`record-decode`](record-codec) output) by applying **declarative per-field rules**, streaming with constant memory. It is the structural task of the canonical `constitute-test-dataset` workflow.
+
+Every keyed strategy derives its choices from `HMAC(key, field_path + value)`: **same key = byte-identical output** across runs and files (joins keep working); different keys = uncorrelated datasets.
+
+The task carries **`anonymizes: true` implicitly and non-disablably**: downstream DAG validations (`ai-prompt` in `anonymized-only`, App Mode downloads) accept its outputs without any step attribute.
+
+```yaml
+- id: anonymize
+  uses: pii-anonymize
+  with:
+    input: work/customers.ndjson
+    output: work/customers.anon.ndjson
+    key: ${secret:ANON_KEY}           # a ${secret:...} reference only
+    schema: ${{ steps.parse_layout.outputs.output }}   # PIC-constraint validation
+    on_unmapped: fail
+    report: out/anonymize-report.json
+    rules:
+      ID_CLIENT:     {strategy: hash, length: 16}
+      TELEPHONE:     {strategy: mask, keep_last: 2}
+      NOM:           {strategy: substitute, dictionary: fr-last-names}
+      IBAN:          {strategy: pseudonymize, format: iban}
+      DATE_NAISS:    {strategy: date-shift, max_days: 180, keep: [year]}
+      ADRESSE.VILLE: {strategy: substitute, dictionary: fr-cities}
+```
+
+## Inputs
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `input` | string | yes | NDJSON input. |
+| `output` | string | yes | Anonymized NDJSON (field order preserved for the `record-encode` round-trip). |
+| `rules` | object | no* | Per-field rules: dotted path → rule. A path covers **all occurrences** of OCCURS tables. |
+| `rules_file` | string | no* | Reusable YAML profile; inline `rules` override it **per field** (full replacement, no partial merge). |
+| `key` | string | no | HMAC key — **only** a `${secret:NAME}` reference (a literal key is refused at validation). Mutually exclusive with `seed`. |
+| `seed` | integer | no | Literal seed for fixtures and documentation. `a4z lint` warns (`anonymize.seed_on_real_data`) when a literal seed sits downstream of `dataset-download`. |
+| `on_unmapped` | string | no | Field without a rule: `warn` (default), `fail` (recommended in regulated environments), `pass`. |
+| `schema` | string | no | `copybook-schema` layout: PIC-constraint validation, **mandatory once provided**. |
+| `report` | string | no | Traceability report (JSON, metadata only). |
+| `residual_scan` | string | no | Residual PII scan on uncovered fields: `warn` (default), `fail`, `off`. |
+| `profile` | string | no | Profile carrying the `anonymize:` config (local dictionaries, patterns) — default `default`. |
+
+\* at least one rule source is required.
+
+## Strategies
+
+| Strategy | Parameters | Effect |
+|----------|-----------|--------|
+| `mask` | `keep_last` (default 0), `mask_char` (default `*`) | Masks everything except the kept suffix. A value not longer than `keep_last` is masked entirely. |
+| `constant` | `value` | Replaces every value with the constant. |
+| `hash` | `length` (0 = full), `encoding` (`hex` default, `base32`) | Keyed HMAC-SHA256 digest truncated to the target width. |
+| `pseudonymize` | `format`: `iban` \| `digits` \| `email` \| `name` | Realistic synthetic value, deterministic per original value. |
+| `substitute` | `dictionary` | Deterministic draw from an embedded or local dictionary — never any network access. |
+| `shuffle` | — | Permutes the column's values across records: distribution strictly preserved, deterministic at equal key. |
+| `date-shift` | `max_days` (required), `keep: [year\|month]` | Shifts each date by at most `max_days` days, deterministic per value (chronologies stay coherent). Layouts `YYYY-MM-DD` and `YYYYMMDD`. |
+
+### `pseudonymize` formats
+
+| Format | Produced value |
+|--------|----------------|
+| `iban` | Syntactically valid French IBAN (MOD-97 check, consistent RIB key) on the **fictitious bank code 99999** — never a real institution. |
+| `digits` | Same shape as the original: digits replaced, separators kept, width preserved. Leading digit forced to `9` (out of attributable NIR/SIREN ranges where the format permits). |
+| `email` | `<base32>@example.org` — RFC 2606 reserved domain, never deliverable. |
+| `name` | Pronounceable synthetic name, same length (min 3), original case style. |
+
+### Dictionaries
+
+Embedded in the binary (air-gap): `fr-first-names`, `fr-last-names`, `fr-cities`, `streets`. Extend (or shadow) them with local files via the profile:
+
+```yaml
+# ~/.automate4z/profiles/default.yml
+anonymize:
+  dictionaries:
+    doctors: /data/anonymize/doctors.txt   # one entry per line
+```
+
+## Format validation (`schema`)
+
+With the `copybook-schema` layout provided, every produced value is validated against the PIC constraints — width, numeric nature, sign. Incompatibilities **decidable without data** fail before execution (also at `a4z lint` on a literal path): non-numeric constant on PIC 9, `hash` on a numeric or too-narrow field, oversized dictionary entries, etc. At execution, a violation fails naming **field, constraint and record number — never the value**. With `on_unmapped: fail`, schema fields without a rule fail statically.
+
+## Report (`report`)
+
+Versioned JSON document (`report_version: 1`), **metadata only**: per field — strategy, records processed, transformed/copied counters; uncovered fields with occurrence counts; and the **SHA-256 fingerprint of the effective rule configuration** after merge (auditable reproducibility). No original value, no produced value, never the key.
+
+## Residual PII detection (`residual_scan`)
+
+Sweeps the **uncovered fields** in the same pass as writing: embedded patterns **validated by check key** (IBAN MOD-97, French NIR structure + key — Corsican departments handled —, email, phone E.164 + FR), extensible via the profile's `anonymize.extra_patterns`. `warn` emits an `anonymize.warning` event (field, pattern, occurrences — never the values); `fail` fails the step **and removes the output**. Documented limit: a pattern net is blind to proper names and contextual data — it does not replace reviewing the rules.
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `output` | string | Path of the anonymized NDJSON. |
+| `records` | integer | Records processed. |
+| `transformed` | integer | Values transformed. |
+| `report` | string | Report path (when requested). |
+
+## Normalized errors
+
+`anonymize.key_not_secret`, `anonymize.key_and_seed`, `anonymize.missing_key`, `anonymize.no_rules`, `anonymize.invalid_rule`, `anonymize.invalid_rules_file`, `anonymize.unknown_dictionary` (lists the available dictionaries), `anonymize.invalid_schema`, `anonymize.format_violation`, `anonymize.unmapped_field`, `anonymize.residual_pii`. Neither the key nor any value ever appears in logs, events or error messages; a failure removes any partial output.

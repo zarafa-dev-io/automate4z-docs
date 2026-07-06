@@ -5,7 +5,7 @@ title: Vue d'ensemble
 
 # Tâches built-in
 
-automate4z embarque **16 tâches built-in** dans le binaire `a4z`, toutes **Stable**.
+automate4z embarque **21 tâches built-in** dans le binaire `a4z`, toutes **Stable**.
 
 ## Catalogue
 
@@ -34,6 +34,23 @@ automate4z embarque **16 tâches built-in** dans le binaire `a4z`, toutes **Stab
 | [`zos-jobs`](zos-jobs) | Soumission JCL via z/OSMF, monitoring, SYSOUT |
 | [`zos-datasets`](zos-datasets) | Opérations sur PDS, séquentiels, USS |
 | [`z-deps`](z-deps) | Résolution de dépendances pour COBOL/copybooks |
+
+### Tâches données mainframe — jeux d'essai (4)
+
+Le workflow canonique `constitute-test-dataset` : du copybook au jeu anonymisé.
+
+| Tâche | Domaine |
+|-------|---------|
+| [`copybook-schema`](copybook-schema) | Layout JSON d'un copybook COBOL (offsets, usages, longueurs) |
+| [`record-decode`](record-codec) | Enregistrements fixes → NDJSON selon le layout |
+| [`record-encode`](record-codec) | NDJSON → enregistrements fixes (round-trip garanti) |
+| [`pii-anonymize`](pii-anonymize) | Pseudonymisation déterministe par règles déclaratives |
+
+### Tâche IA (1)
+
+| Tâche | Domaine |
+|-------|---------|
+| [`ai-prompt`](ai-prompt) | Appel LLM consultatif (endpoints gouvernés par le profil) |
 
 :::note
 Les tâches `zos-db2` et `zos-endevor`, initialement envisagées, sont **différées** : elles ne peuvent pas être validées sans accès à une LPAR d'entreprise équipée. En attendant, un accès DB2 passe par un job batch (`zos-jobs`) ou `shell`.
