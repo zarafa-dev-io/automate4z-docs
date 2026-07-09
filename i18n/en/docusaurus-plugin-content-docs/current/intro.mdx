@@ -5,7 +5,7 @@ title: Introduction
 
 # automate4z
 
-**automate4z** is an open-source workflow orchestrator that erases the boundary between z/OS mainframe execution and local execution.
+**automate4z** is a workflow orchestrator that erases the boundary between z/OS mainframe execution and local execution.
 
 Distributed as **a single `a4z` binary** (Linux / macOS / Windows × amd64 / arm64), with no runtime to install on the user side — and **nothing to install on z/OS either**: the mainframe is driven through z/OSMF REST. Workflows are defined in YAML with a syntax inspired by GitHub Actions, adapted for the mainframe.
 
@@ -71,6 +71,7 @@ a4z run hello.yml --input name=Alice
 | [Guides](guides/build-and-test) | End-to-end scenarios: build and test, testing a batch |
 | [Web interface (Studio)](studio/overview) | Edit, run and track workflows in the browser |
 | [External plugins](plugins/utiliser-des-plugins) | Extend a4z with your own tasks, in any language |
+| [License](licence) | The EULA model: usage rights, restrictions, ownership of your data |
 
 ---
 
@@ -79,3 +80,9 @@ a4z run hello.yml --input name=Alice
 **v1.2.x — 30 stable built-in tasks.** The z/OS tasks (`zos-jobs`, `zos-datasets`, `z-deps`) are validated against z/Xplore; recent lots cover mainframe data (copybooks, test datasets, inspection, comparison), batch testing (`tests:` block + JUnit), incremental build (`source-scan` / `build-impact` / `zos-build`), the web Studio, App mode and external plugins.
 
 See the [CHANGELOG](https://github.com/zarafa-dev-io/automate4z/blob/master/CHANGELOG.md) and the [GitHub releases](https://github.com/zarafa-dev-io/automate4z/releases) for version details.
+
+---
+
+## License
+
+automate4z is **proprietary** software, distributed under an **End User License Agreement (EULA)**: a complete internal-use right (full binary, nothing crippled, no telemetry), with no redistribution or resale. **Your workflows and the data you produce remain entirely yours.** Details and agreement text: [License](licence).
