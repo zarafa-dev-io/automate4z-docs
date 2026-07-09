@@ -1,0 +1,114 @@
+---
+sidebar_position: 29
+title: zos-build
+---
+
+# `zos-build` — Compiler sur z/OS, piloté par l'analyse d'impact
+
+Compile/link une liste d'artefacts via z/OSMF — l'exécution de build de DBB, recomposée à partir des briques a4z. Pour chaque artefact, dans l'ordre : **rendre** le JCL de compilation depuis un template, **uploader** la source en membre PDS (optionnel), **soumettre** le job, récupérer le **listing**, et en tirer le verdict avec le moteur de [`spool-analyze`](spool-analyze) — jamais un second parseur de spool.
+
+**z/OSMF est le seul prérequis mainframe** : rien à installer sur la LPAR — ni Groovy, ni toolkit, ni agent.
+
+```yaml
+steps:
+  - id: build
+    uses: zos-build
+    needs: [impact]
+    if: ${{ steps.impact.outputs.passed == false }}
+    with:
+      impact: ${{ steps.impact.outputs.output }}   # l'ordre de build topologique
+      template: templates/compile.jcl
+      vars: { srclib: TEAM.BUILD.SRC, parm: "LIB,APOST" }
+      upload: { dataset: TEAM.BUILD.SRC }
+      lpar: dev01
+      output: build/report.json
+```
+
+## Le template JCL
+
+Un template Go `text/template` avec les délimiteurs `<< >>` (la convention [`zos-jobs`](zos-jobs) — aucune collision avec les expressions `${{ }}` d'a4z), rendu **par artefact** avec les faits `.name`, `.member`, `.path` plus chaque entrée de `vars` :
+
+```
+//BLD<< .member >> JOB (ACCT),'BUILD',CLASS=A
+//COMPILE  EXEC PGM=IGYCRCTL,PARM='<< .parm >>'
+//SYSIN    DD DSN=<< .srclib >>(<< .member >>),DISP=SHR
+```
+
+Votre site a déjà ses procédures de compile (IGYWCL, procs maison) : le template les réutilise telles quelles — a4z n'impose aucune convention de build.
+
+## Entrées
+
+| Entrée | Type | Requis | Description |
+|--------|------|--------|-------------|
+| `impact` | string | l'un des deux | Analyse [`build-impact`](build-impact) : ses artefacts buildables, dans son ordre topologique. |
+| `sources` | string[] | l'un des deux | Liste explicite de sources COBOL, dans l'ordre. Exclusif avec `impact`. |
+| `template` | string | oui | Template JCL de compile/link. |
+| `vars` | object | non | Variables de template supplémentaires. |
+| `upload.dataset` | string | non | PDS recevant chaque source en membre `<nom>` avant soumission. |
+| `lpar` | string | non | Profil z/OS (même chaîne de résolution que `zos-jobs` : config d'équipe Zowe, trousseau, variables d'env). |
+| `timeout` / `pollInterval` | string | non | Timeout de complétion par job (défaut `10m`) / intervalle de polling (défaut `3s`). |
+| `max_rc` | integer | non | Condition code maximal accepté (défaut `4`). |
+| `fail_fast` | boolean | non | Stopper au premier build en échec ; le reste est rapporté `skipped`. |
+| `listings` | string | non | Répertoire des listings spool (défaut : `listings/` à côté du rapport). |
+| `output` | string | oui | Rapport de build JSON (`schema_version: 1`). |
+
+## Sorties
+
+`output`, `built`, `failed`, `skipped`, `passed` (`failed == 0`).
+
+## Le verdict d'un build : réaliste, pas puriste
+
+Par artefact, à partir du listing récupéré et analysé par le moteur SPL :
+
+| Situation | Statut |
+|-----------|--------|
+| Verdict **abend** ou **jcl-error** | `failed` |
+| Condition code max **au-delà de `max_rc`** | `failed` (la raison nomme les deux valeurs) |
+| Tout le reste — y compris les warnings à RC acceptable | `built` |
+
+Pourquoi tolérer les warnings ? Parce qu'un listing de compilation COBOL charrie **en routine** du trafic informatif IEF/IGZ et des RC 4 sans gravité. Faire échouer chaque build là-dessus rendrait la gate inutilisable ; `max_rc: 0` reste disponible pour une politique stricte.
+
+Chaque entrée du rapport porte statut, jobid, verdict, RC max, chemin du listing sauvegardé, et la raison en cas d'échec. Les listings restent à côté du rapport : **un build échoué, c'est le listing qui arrive dans le pipeline** — plus besoin d'aller le rechercher dans SDSF.
+
+## Garde-fous
+
+- **Nommage z/OS validé tôt** : les noms d'artefacts sont vérifiés comme membres PDS (1–8 caractères, `A-Z 0-9 $#@`, premier non numérique) **avant** tout contact mainframe.
+- **Échec de build ≠ panne technique** : des builds en échec = échec typé, rapport + listings + sorties disponibles (gate aval : `continueOnError` + `outputs.passed`). Template illisible, erreur de soumission, listing non-spool = panne technique, aucun rapport.
+- **Annuler le workflow n'annule jamais le job côté z/OS** (sémantique fire-and-forget de `zos-jobs`) : le polling s'arrête, le job continue.
+- `fail_fast: true` : les artefacts restants sont rapportés `skipped` et **jamais soumis**.
+
+## Pipeline complet
+
+```yaml
+steps:
+  - id: scan
+    uses: source-scan
+    with: { root: sources, layout: { … }, output: build/depgraph.json }
+
+  - id: impact
+    uses: build-impact
+    continueOnError: true
+    with: { graph: build/depgraph.json, output: build/impact.json }
+
+  - id: build
+    uses: zos-build
+    if: ${{ steps.impact.outputs.passed == false && inputs.lpar != "" }}
+    with:
+      impact: ${{ steps.impact.outputs.output }}
+      template: templates/compile.jcl
+      upload: { dataset: "${{ inputs.hlq }}.BUILD.SRC" }
+      lpar: ${{ inputs.lpar }}
+      output: build/report.json
+```
+
+Le guide [Construire et tester](../guides/build-and-test) déroule ce pipeline pas à pas, avec un démonstrateur exécutable **100 % en local**.
+
+## Limites v1
+
+Builds séquentiels (le graphe permettrait de paralléliser les compilations indépendantes — v2). Pas de bind DB2 (utilisez un step `zos-jobs` avec votre JCL de bind). Vérifié contre le serveur z/OSMF de test embarqué ; la validation sur LPAR réelle est suivie séparément.
+
+## Voir aussi
+
+- [`build-impact`](build-impact) — produit la liste et l'ordre de build.
+- [`spool-analyze`](spool-analyze) — le moteur de verdict des listings.
+- [`zos-jobs`](zos-jobs) — la soumission de job générique sous-jacente.

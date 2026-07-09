@@ -1,0 +1,92 @@
+---
+sidebar_position: 27
+title: source-scan
+---
+
+# `source-scan` — Cartographier les dépendances de vos sources
+
+Scanne un arbre de sources local (COBOL, copybooks, JCL) et produit un **graphe de dépendances** JSON : qui inclut quel copybook, qui appelle quel programme, quel JCL exécute quoi. C'est le premier étage du pipeline de build ([`build-impact`](build-impact) → [`zos-build`](zos-build)) — l'équivalent de la découverte de dépendances d'IBM DBB, **100 % en local, sans rien installer sur le mainframe**.
+
+## Le problème que ça résout
+
+« Si je modifie ce copybook, qu'est-ce que je dois recompiler ? » Sur la plupart des sites, la réponse vit dans la tête d'un ancien, dans un tableur, ou dans un produit propriétaire. Dès que vos sources sont dans Git, `source-scan` reconstruit cette connaissance à la demande — et le graphe étant un JSON **déterministe à l'octet près**, vous pouvez le committer et voir en revue de code *les dépendances qui changent* en même temps que le code.
+
+```yaml
+steps:
+  - id: scan
+    uses: source-scan
+    with:
+      root: sources                     # racine de l'arbre scanné
+      layout:
+        cobol: src/cobol/**/*.cbl       # quels fichiers sont quoi (globs)
+        copybook: src/copybook/**/*.cpy
+        jcl: src/jcl/**/*.jcl
+      output: build/depgraph.json
+```
+
+## Ce que le scan détecte
+
+Une détection **lexicale ciblée** — pas un compilateur, mais des règles précises qui respectent le format fixe COBOL (colonnes 7 et 72, littéraux chaîne opaques : un `DISPLAY 'COPY X'` ne produit rien) :
+
+| Dans | Détecté | Arête produite |
+|------|---------|----------------|
+| COBOL / copybook | `COPY MEMBRE` (avec ou sans `REPLACING`) | `copy` — les copybooks sont **aussi scannés**, donc les chaînes de COPY rendent l'impact transitif |
+| COBOL | `CALL 'LITTERAL'` | `call` (statique, résolue par `PROGRAM-ID`) |
+| COBOL | `CALL IDENTIFIANT` (variable) | `dynamic-unresolved` — **jamais résolue ni devinée** |
+| COBOL | `EXEC SQL INCLUDE` | `sql-include` |
+| JCL | `PGM=PROGRAMME`, `INCLUDE MEMBER=` | `jcl-ref` |
+| JCL | `PGM=&SYMBOLE` | `dynamic-unresolved` |
+
+La règle d'or : **on ne devine jamais**. Un appel dynamique est enregistré comme tel — c'est à vous de savoir ce que la variable contient à l'exécution.
+
+## Entrées
+
+| Entrée | Type | Requis | Description |
+|--------|------|--------|-------------|
+| `root` | string | non | Racine de l'arbre scanné, relative au répertoire du workflow (défaut : le répertoire du workflow). |
+| `layout` | object | oui | Quels fichiers appartiennent à quel type : `cobol`, `copybook`, `jcl` — chacun un glob (chaîne) ou une liste de globs (`**` supporté). |
+| `output` | string | oui | Chemin du graphe JSON produit (`schema_version: 1`). |
+| `strict` | boolean | non | Échouer quand une dépendance **statique** ne se résout pas dans l'inventaire scanné (les arêtes dynamiques ne comptent jamais). Le graphe est produit intégralement dans tous les cas. |
+
+## Sorties
+
+| Sortie | Description |
+|--------|-------------|
+| `output` | Chemin du graphe. |
+| `artifacts` | Nombre d'artefacts scannés. |
+| `edges` | Nombre d'arêtes de dépendance. |
+| `unresolved` | Arêtes statiques non résolues dans l'arbre. |
+| `dynamic` | Arêtes dynamiques (`CALL` variable, `PGM=&SYM`). |
+| `passed` | `false` si `strict: true` et `unresolved > 0`. |
+
+## Résolution : monde clos, résultat déterministe
+
+Les références sont résolues **contre l'inventaire scanné** (index nom → artefact), pas en sondant le disque : le même arbre produit toujours exactement le même graphe, artefacts triés par chemin, arêtes triées, SHA-256 par source. Committable, diffable.
+
+Une dépendance statique qui ne se résout pas (un utilitaire système appelé par un JCL, un copybook hors de l'arbre) n'est **pas une erreur** : elle est conservée sans chemin et comptée dans `summary.unresolved`. C'est une **donnée** — souvent le signe qu'une dépendance devrait être déclarée dans un manifeste [`z-deps`](z-deps). Pour en faire un contrôle bloquant :
+
+```yaml
+      strict: true    # une statique non résolue = step en échec (graphe produit quand même)
+```
+
+## Le graphe produit
+
+```json
+{
+  "schema_version": 1,
+  "artifacts": [
+    { "path": "src/cobol/CUSTUPD.cbl", "type": "cobol", "name": "CUSTUPD",
+      "deps": [
+        { "type": "copy", "target": "CUSTREC", "path": "src/copybook/CUSTREC.cpy" },
+        { "type": "call", "target": "SUBCALC", "path": "src/cobol/SUBCALC.cbl" }
+      ] }
+  ],
+  "summary": { "artifacts": 7, "edges": 11, "unresolved": 2, "dynamic": 2 }
+}
+```
+
+## Voir aussi
+
+- [`build-impact`](build-impact) — l'étape suivante : croiser ce graphe avec un diff Git.
+- [Construire et tester (pipeline complet)](../guides/build-and-test) — le démonstrateur de bout en bout.
+- [`z-deps`](z-deps) — les dépendances *hors* de l'arbre (nœuds feuilles du graphe).

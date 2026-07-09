@@ -1,0 +1,99 @@
+---
+sidebar_position: 22
+title: data-inspect
+---
+
+# `data-inspect` — Read a dataset field by field
+
+Decodes a raw z/OS sequential dataset **field by field** using a copybook: every field comes out **named, positioned and decoded** (packed, binary, zoned — including overpunch signs —, display), with **hex alongside** for diagnosis.
+
+## The problem it solves
+
+Looking at a batch file's content today means opening a 3270 session, `BROWSE` in hexadecimal, and counting columns by hand with the copybook printed next to you. `data-inspect` does that work: it applies the copybook to the file and shows you `CUST-BALANCE = 1523.75` where the 3270 screen showed `x'1523750C'`.
+
+```yaml
+steps:
+  - id: derive_layout
+    uses: copybook-schema
+    with: { input: order.cpy, output: order-layout.json }
+
+  - id: inspect
+    uses: data-inspect
+    with:
+      schema: order-layout.json    # layout produced by copybook-schema
+      source: order.dat            # raw sequential dataset (binary stream)
+      output: order-inspected.ndjson
+      encoding: cp037              # EBCDIC codepage of character zones
+```
+
+:::caution Raw binary stream expected
+`source` must be the file **as transferred in z/OSMF binary mode** (via [`zos-datasets`](zos-datasets) `mode: binary`). Never transfer a file containing packed or binary fields in text mode: the code-page conversion would destroy those bytes. The task never "guesses" an upstream conversion.
+:::
+
+## Inputs
+
+| Input | Type | Required | Description |
+|-------|------|----------|-------------|
+| `schema` | string | yes | Layout JSON produced by `copybook-schema`. |
+| `source` | string | yes | Raw sequential dataset (RECFM F/FB) to inspect. |
+| `output` | string | yes | Path of the produced NDJSON pivot. |
+| `records` | string | no | Selection `"start:end"`, 0-based, end exclusive (e.g. `"0:100"`). Absent = every record. |
+| `encoding` | string | no | EBCDIC codepage of character zones: `cp1147` (default), `cp037`, `cp1140`, `cp297`, `cp500`, `cp1148`, `cp1047`. |
+| `exitOnError` | boolean | no | Fail the step on any field decoding error (data-quality gate). The NDJSON pivot is fully produced either way. |
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| `output` | Path of the NDJSON pivot. |
+| `records` | Number of records inspected. |
+| `errors` | Total fields with `status: "error"`. |
+| `passed` | `true` when `errors` is zero. |
+
+## The NDJSON pivot: one truth, many views
+
+The task writes a versioned **NDJSON** file (`schema_version: 1`): a `meta` line, one `record` line per record, a final `summary` line. Every field carries `path`, `offset`, `length`, `raw` (the hex), `value` (the decoded value) and `status`:
+
+```json
+{"type":"record","index":0,"fields":[
+  {"path":"CUST-ID","offset":0,"length":6,"raw":"F1F0F0F0F4F2","value":100042,"status":"ok"},
+  {"path":"CUST-BALANCE","offset":36,"length":5,"raw":"0001523750C","value":1523.75,"status":"ok"}
+]}
+```
+
+This pivot is the **single decoding path**: the terminal table render, Studio, VSCode and `jq` only project it — none of them re-decodes. The **`raw` + `value` dual view** is part of the contract: when a value surprises you, the hex is already there to settle it.
+
+## A decoding error is data, not a failure
+
+This is the task's central principle. An invalid packed sign nibble, a non-numeric zoned, a truncated binary: the field comes out with `status: "error"`, `value: null` and a diagnostic naming the offending byte — **and the inspection continues** on the next fields and records. You see *every* anomaly in the file in one pass, not just the first one.
+
+To turn this tolerance into a **blocking quality check**, add `exitOnError: true`: any decoding error then fails the step (typed error, distinct from a technical failure) — but the pivot is always fully written first, so **the diagnostic survives the gate**.
+
+```yaml
+  - id: quality_gate
+    uses: data-inspect
+    with:
+      schema: layout.json
+      source: incoming.dat
+      output: inspection.ndjson
+      exitOnError: true          # doubtful file = failed step, full pivot available
+```
+
+## REDEFINES and OCCURS DEPENDING ON
+
+- **`REDEFINES`**: every view is decoded (shared offsets). An error on a view irrelevant to this record never affects the other views or the exit code (unless `exitOnError`).
+- **`OCCURS DEPENDING ON`**: tables are decoded per the **actual counter value** read from each record — not the static maximum. An out-of-bounds counter turns the affected occurrences into error data, and the inspection continues.
+
+## Technical errors
+
+Distinct from the quality gate: a missing `schema`/`source`, an unreadable file, or a file size that is **not a multiple of the record length** (the classic sign of a text-mode transfer instead of binary, or of RECFM V) fail the step **without leaving any partial output file**.
+
+## v1 scope
+
+RECFM F/FB only. Out of scope: `--where` filtering, RECFM V/VB, direct VSAM, REDEFINES view selection, CSV/parquet output.
+
+## See also
+
+- [`copybook-schema`](copybook-schema) — produces the layout consumed here.
+- [`data-compare`](data-compare) — the same decoding engine, applied to comparing two files.
+- [`testdata-generate`](testdata-generate) — generate a test file that `data-inspect` can visually check.

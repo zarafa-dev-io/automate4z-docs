@@ -1,0 +1,113 @@
+---
+sidebar_position: 25
+title: job-assert
+---
+
+# `job-assert` — Assert a batch job's outcome
+
+Turns a job submission into a **verification**: asserts the outcome of a batch execution — verdict, per-step condition codes, abends, messages — from the structured report produced by [`spool-analyze`](spool-analyze).
+
+## The principle: observe on one side, judge on the other
+
+`job-assert` is a **pure assertion task**: it consumes the `spool-analyze` JSON object and **never re-parses a spool**. A single spool-reading logic exists in the product — which guarantees that what you assert is exactly what the diagnostic saw. Any object that is not a `spool-analyze` output (no `schema_version`) is refused outright.
+
+```yaml
+steps:
+  - id: analyze
+    uses: spool-analyze
+    with: { source: spool/nightbat.txt, fail_on: never }
+
+  - id: job_ok
+    uses: job-assert
+    with:
+      analysis: ${{ steps.analyze.outputs }}
+      expect:
+        verdict: success
+        max_rc: 4
+        steps:
+          - { name: STEP010, rc: 0 }        # exact RC
+          - { name: SORT01, rc_max: 4 }     # upper bound
+        abends: []                          # empty list = "no abend at all"
+```
+
+Note the `fail_on: never` on the analysis: it **observes** without judging, and `job-assert` carries the judgment. This is the recommended pair inside a `tests:` block.
+
+## Inputs
+
+| Input | Type | Required | Description |
+|-------|------|----------|-------------|
+| `analysis` | object | yes | The `spool-analyze` output object (`schema_version: 1`), typically `${{ steps.<analyze>.outputs }}`. |
+| `expect` | object | yes | The assertions to evaluate (at least one). |
+
+`expect` fields (all optional, at least one required):
+
+| Field | What it checks |
+|-------|----------------|
+| `verdict` | Expected synthetic verdict: `success`, `warning`, `abend`, `jcl-error`. |
+| `max_rc` | Highest tolerated condition code: asserts `maxRc` is present **and** ≤ the value. |
+| `steps[]` | Per-step assertions: `name` (required) + exactly one of `rc` (exact) or `rc_max` (bound). The step must exist **and** have executed. |
+| `abends` | Expected abend codes, order-insensitive. An **empty list asserts total absence of abends**. |
+| `required_messages` | RE2 patterns that must each match at least one cataloged message or custom-rule match. |
+| `forbidden_messages` | RE2 patterns that must match nothing; a hit fails citing the message and its step. |
+
+Patterns match over cataloged message ids (`messages[].id`) and custom-rule matches (`custom_matches[]`). Application-level patterns are declared on the `spool-analyze` side (its `rules` input) — `job-assert` only asserts on what the analysis extracted.
+
+## Exhaustive evaluation: everything in one pass
+
+Assertions are evaluated **exhaustively**: every unsatisfied assertion is reported in a single failure, as an *expected vs observed* sentence:
+
+```
+step STEP020: expected rc 0, observed 8
+verdict: expected success, observed warning
+```
+
+You fix everything in one iteration instead of discovering the failures one by one.
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| `passed` | `true` when every assertion held. |
+| `checked` | Number of assertions evaluated. |
+| `failures` | The unsatisfied assertions (empty when passed). |
+
+## Assertion failure ≠ technical breakage
+
+`job-assert` strictly separates two failure families (the product contract, see [Gates, verdicts and tests](../workflow-spec/gates-et-tests)):
+
+- **Unsatisfied assertions** → typed "assertion" error: inside a `tests:` block, the case comes out with verdict **`failed`** (`<failure>` in the JUnit report) — *the program has a problem*;
+- **Technical error** (`analysis` is not a spool-analyze object, unknown `schema_version`, invalid `expect`) → the case comes out as **`error`** (JUnit `<error>`) — *the test itself could not conclude*.
+
+That distinction is the one Jenkins and GitLab render natively: a "failed" red gets fixed on the program side, an "error" red gets fixed on the test or infrastructure side.
+
+## Full example inside a `tests:` block
+
+```yaml
+tests:
+  - id: monthly_interests
+    execute:
+      - id: run_batch
+        uses: zos-jobs
+        with: { jcl: jcl/interests.jcl, lpar: dev01 }
+      - id: analyze
+        uses: spool-analyze
+        with:
+          jobid: ${{ steps.run_batch.outputs.jobId }}
+          fail_on: never
+    assert:
+      - id: job_ok
+        uses: job-assert
+        with:
+          analysis: ${{ steps.analyze.outputs }}
+          expect:
+            verdict: success
+            steps:
+              - { name: CALCINT, rc: 0 }
+            forbidden_messages: ["IGZ0035S"]   # module not found = forbidden
+```
+
+## See also
+
+- [`spool-analyze`](spool-analyze) — produces the report asserted here.
+- [`test-report`](test-report) — aggregates case verdicts into a JUnit report.
+- [`assert`](assert) — the generic expression assertion, for everything else.

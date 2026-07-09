@@ -1,0 +1,113 @@
+---
+sidebar_position: 25
+title: job-assert
+---
+
+# `job-assert` — Asserter le résultat d'un job batch
+
+Transforme une soumission de job en **vérification** : asserte le résultat d'une exécution batch — verdict, condition codes par step, abends, messages — à partir du rapport structuré produit par [`spool-analyze`](spool-analyze).
+
+## Le principe : observer d'un côté, juger de l'autre
+
+`job-assert` est une **tâche d'assertion pure** : elle consomme l'objet JSON de `spool-analyze` et **ne re-parse jamais un spool**. Il n'existe qu'une seule logique de lecture de spool dans le produit — c'est ce qui garantit que ce que vous assertez est exactement ce que le diagnostic a vu. Tout objet qui n'est pas une sortie `spool-analyze` (pas de `schema_version`) est refusé net.
+
+```yaml
+steps:
+  - id: analyze
+    uses: spool-analyze
+    with: { source: spool/nightbat.txt, fail_on: never }
+
+  - id: job_ok
+    uses: job-assert
+    with:
+      analysis: ${{ steps.analyze.outputs }}
+      expect:
+        verdict: success
+        max_rc: 4
+        steps:
+          - { name: STEP010, rc: 0 }        # RC exact
+          - { name: SORT01, rc_max: 4 }     # borne supérieure
+        abends: []                          # liste vide = « aucun abend »
+```
+
+Notez le `fail_on: never` sur l'analyse : elle **observe** sans juger, et c'est `job-assert` qui porte le jugement. C'est le duo recommandé dans un bloc `tests:`.
+
+## Entrées
+
+| Entrée | Type | Requis | Description |
+|--------|------|--------|-------------|
+| `analysis` | object | oui | L'objet de sortie `spool-analyze` (`schema_version: 1`), typiquement `${{ steps.<analyze>.outputs }}`. |
+| `expect` | object | oui | Les assertions à évaluer (au moins une). |
+
+Champs d'`expect` (tous optionnels, au moins un requis) :
+
+| Champ | Ce qu'il vérifie |
+|-------|------------------|
+| `verdict` | Le verdict synthétique attendu : `success`, `warning`, `abend`, `jcl-error`. |
+| `max_rc` | Le plus haut condition code toléré : vérifie que `maxRc` est présent **et** ≤ la valeur. |
+| `steps[]` | Assertions par step : `name` (requis) + exactement l'un de `rc` (exact) ou `rc_max` (borne). Le step doit exister **et** avoir été exécuté. |
+| `abends` | Les codes abend attendus, sans ordre. Une **liste vide asserte l'absence totale d'abend**. |
+| `required_messages` | Motifs RE2 qui doivent chacun matcher au moins un message catalogué ou une règle maison. |
+| `forbidden_messages` | Motifs RE2 qui ne doivent rien matcher ; un hit échoue en citant le message et son step. |
+
+Les motifs matchent sur les ids de messages catalogués (`messages[].id`) et sur les correspondances des règles maison (`custom_matches[]`). Les motifs applicatifs se déclarent côté `spool-analyze` (son entrée `rules`) — `job-assert` n'asserte que sur ce que l'analyse a extrait.
+
+## Évaluation exhaustive : tout en une passe
+
+Les assertions sont évaluées **exhaustivement** : chaque assertion non satisfaite est rapportée dans un seul échec, en phrase *attendu vs observé* :
+
+```
+step STEP020: expected rc 0, observed 8
+verdict: expected success, observed warning
+```
+
+Vous corrigez tout en une itération, au lieu de découvrir les échecs un par un.
+
+## Sorties
+
+| Sortie | Description |
+|--------|-------------|
+| `passed` | `true` quand toutes les assertions tiennent. |
+| `checked` | Nombre d'assertions évaluées. |
+| `failures` | Les assertions non satisfaites (vide si `passed`). |
+
+## Échec d'assertion ≠ panne technique
+
+`job-assert` distingue strictement deux familles d'échec (le contrat produit, voir [Gates, verdicts et tests](../workflow-spec/gates-et-tests)) :
+
+- **Assertions non satisfaites** → erreur typée « assertion » : dans un bloc `tests:`, le cas ressort en verdict **`failed`** (`<failure>` dans le rapport JUnit) — *le programme a un problème* ;
+- **Erreur technique** (`analysis` n'est pas un objet spool-analyze, `schema_version` inconnu, `expect` invalide) → le cas ressort en **`error`** (`<error>` JUnit) — *le test lui-même n'a pas pu conclure*.
+
+Cette distinction est celle que Jenkins et GitLab affichent nativement : un rouge « failed » se corrige côté programme, un rouge « error » se corrige côté test ou infrastructure.
+
+## Exemple complet dans un bloc `tests:`
+
+```yaml
+tests:
+  - id: interets_mensuels
+    execute:
+      - id: run_batch
+        uses: zos-jobs
+        with: { jcl: jcl/interets.jcl, lpar: dev01 }
+      - id: analyze
+        uses: spool-analyze
+        with:
+          jobid: ${{ steps.run_batch.outputs.jobId }}
+          fail_on: never
+    assert:
+      - id: job_ok
+        uses: job-assert
+        with:
+          analysis: ${{ steps.analyze.outputs }}
+          expect:
+            verdict: success
+            steps:
+              - { name: CALCINT, rc: 0 }
+            forbidden_messages: ["IGZ0035S"]   # module introuvable = interdit
+```
+
+## Voir aussi
+
+- [`spool-analyze`](spool-analyze) — produit le rapport asserté ici.
+- [`test-report`](test-report) — agrège les verdicts de cas en rapport JUnit.
+- [`assert`](assert) — l'assertion générique sur expression, pour tout le reste.

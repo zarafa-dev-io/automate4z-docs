@@ -1,0 +1,125 @@
+---
+sidebar_position: 2
+title: Tester un batch
+---
+
+# Tester un programme batch comme du code
+
+Le batch mainframe vit dans un **angle mort du pipeline** : un job a « tourné » ou pas, et savoir s'il a fait *la bonne chose* implique en général quelqu'un qui ouvre SDSF, parcourt un spool à l'œil, et compare un état à la main. Le bloc `tests:` d'a4z en fait une suite de tests ordinaire — le même JUnit XML que Jenkins, GitLab et GitHub affichent nativement, produit par une vraie analyse de spool et une vraie comparaison champ par champ, pas un script shell qui greppe `RETURN CODE 0000`.
+
+## Le pattern
+
+```
+fixtures → job → spool-analyze → job-assert + data-compare → test-report
+```
+
+Quatre tâches, chacune à sa place :
+
+- [`spool-analyze`](../task-reference/spool-analyze) transforme le spool du job en données structurées : verdict, codes retour, abends, messages catalogués.
+- [`job-assert`](../task-reference/job-assert) asserte sur cette structure — verdict, RC par step, messages requis/interdits — sans jamais re-parser le spool.
+- [`data-compare`](../task-reference/data-compare) asserte sur la **sortie** du job : le dataset produit, comparé à une référence, champ par champ, sur valeurs décodées.
+- [`test-report`](../task-reference/test-report) agrège les verdicts de tous les cas en JUnit XML.
+
+Un cas échoue dès qu'une assertion échoue ; `test-report` dit laquelle et pourquoi. Un batch se teste donc sur ses **deux faces observables** : son déroulement (le spool) et son résultat (le fichier).
+
+## Exemple complet, exécutable sans mainframe
+
+Le dépôt contient `examples/batch-canonical-suite.yml` : deux cas, 100 % en local. Les spools sont **rejoués depuis des fixtures archivées** — le rejeu hors-ligne est un usage de premier rang de `spool-analyze`, donc la logique d'assertion est exactement celle qui tourne face à un vrai job (seul `source:`/`jobid:` change).
+
+- `nightly_batch_ok` : un run propre — spool RC 0, dataset de sortie identique à la référence. Les deux assertions passent.
+- `nightly_batch_regression` : RC 8 **et** un dataset qui dérive de la référence — la double régression que ressemble un vrai incident.
+
+```yaml
+tests:
+  - id: nightly_batch_ok
+    setup:
+      - id: analyze_ok
+        uses: spool-analyze
+        with: { source: tst/success.spool }
+      - id: gen_candidate_ok
+        uses: testdata-generate
+        with: { copybook: tst/customer.cpy, data: tst/candidate-ok.json,
+                output: output/candidate-ok.dat, encoding: ebcdic, codepage: cp037 }
+    assert:
+      - id: assert_job_ok
+        uses: job-assert
+        with:
+          analysis: ${{ steps.analyze_ok.outputs }}
+          expect: { verdict: success }
+      - id: compare_output_ok
+        uses: data-compare
+        needs: [derive_layout, gen_golden, gen_candidate_ok]
+        continueOnError: true
+        with: { schema: output/layout.json, left: output/golden.dat,
+                right: output/candidate-ok.dat, output: output/diff-ok.ndjson }
+```
+
+Exécutez la suite, et `output/junit.xml` montre exactement ce qu'un incident réel montrerait :
+
+```xml
+<testsuite name="batch-canonical-suite" tests="2" failures="1" errors="0" time="0.046">
+  <testcase name="nightly_batch_ok" classname="batch-canonical-suite" time="0.024"></testcase>
+  <testcase name="nightly_batch_regression" classname="batch-canonical-suite" time="0.022">
+    <failure message="step assert_job_bad: job-assert: 1 assertion(s) failed:">
+      step assert_job_bad: job-assert: 1 assertion(s) failed:
+        - verdict: expected "success", observed "warning"
+    </failure>
+  </testcase>
+</testsuite>
+```
+
+## Les deux subtilités que l'exemple contourne déjà
+
+Elles sont expliquées en détail dans [Gates, verdicts et tests](../workflow-spec/gates-et-tests) ; en résumé :
+
+1. **Isolation des cas** : le premier step d'un cas est exempté de la dépendance séquentielle implicite — c'est ce qui isole les cas entre eux. Contrepartie : un step d'assertion qui dépend d'un préparatif déclaré *hors* de son cas (un layout partagé, un dataset de référence) doit le nommer **explicitement** dans `needs:`.
+2. **Le fan-in de `test-report`** : sans `needs:` explicite, `test-report` est câblé automatiquement après le dernier step de chaque cas — mais ce câblage attend des dépendances « satisfaites ». `continueOnError: true` sur les steps d'assertion le garantit (le **verdict du cas** reste calculé sur le statut réel du step, `continueOnError` ne le masque pas) ; sans lui, un cas en échec empêcherait `test-report` de tourner.
+
+## Brancher la CI
+
+### Jenkins (pipeline déclaratif)
+
+```groovy
+pipeline {
+    agent any
+    stages {
+        stage('Batch tests') {
+            steps {
+                sh 'a4z run workflows/batch-tests.yml'
+            }
+        }
+    }
+    post {
+        always {
+            junit 'output/junit.xml'
+        }
+    }
+}
+```
+
+`a4z run` sort en 1 dès qu'un cas n'est pas `passed` — placez `junit` dans `post { always }` pour que le rapport se publie aussi sur un build rouge.
+
+### GitLab CI
+
+```yaml
+batch-tests:
+  stage: test
+  script:
+    - a4z run workflows/batch-tests.yml
+  artifacts:
+    when: always
+    reports:
+      junit: output/junit.xml
+```
+
+Le `reports: junit:` natif de GitLab affiche la suite directement dans l'onglet **Tests** de la merge request — aucun plugin. `when: always` conserve l'artefact même quand le job échoue.
+
+## La frontière v1, assumée
+
+Tout ce qui précède teste le **comportement observable** d'un job : spool et dataset de sortie. Tester un sous-programme COBOL isolé (à la façon d'un test unitaire) demanderait de le *piloter* — générer un appelant qui remplit sa `LINKAGE SECTION`, l'invoque, et capture ce qui en revient. C'est une frontière v1 délibérée, pas un oubli : la trajectoire v2 documentée s'appuie sur le parseur de copybooks (le même modèle de layout qu'une LINKAGE SECTION) et sur [`zos-build`](../task-reference/zos-build) pour compiler et exécuter le driver généré.
+
+## Voir aussi
+
+- [Gates, verdicts et tests](../workflow-spec/gates-et-tests) — le contrat de verdicts et les idiomes du bloc `tests:`.
+- [Construire et tester](build-and-test) — le pipeline de build qui alimente naturellement cette suite.
+- [`data-compare`](../task-reference/data-compare) — modes d'appariement, exclusions `ignore:`.

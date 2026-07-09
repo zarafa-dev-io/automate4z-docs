@@ -1,0 +1,130 @@
+---
+sidebar_position: 21
+title: testdata-generate
+---
+
+# `testdata-generate` — Générer un fichier de test depuis un copybook
+
+Transforme un fichier de données **JSON** (facile à écrire, à relire, à versionner dans Git) en **fichier séquentiel conforme à un copybook COBOL** (le format que votre programme batch attend réellement : longueurs fixes, packed decimal, zoned, EBCDIC…).
+
+## Le problème que ça résout
+
+Constituer un jeu d'essai pour un batch COBOL, aujourd'hui, c'est souvent : copier un fichier de production (interdit ou risqué), ou saisir des enregistrements à la main en hexadécimal sous ISPF (lent, illisible, impossible à relire en revue de code).
+
+`testdata-generate` inverse la logique : **vous décrivez vos enregistrements en JSON lisible, la tâche produit les octets exacts**. Le JSON se relit, se diff, se versionne — le fichier binaire est régénéré à la demande.
+
+La constitution d'un jeu d'essai se fait en 3 étapes :
+
+1. **copybook → schéma** : [`copybook-schema`](copybook-schema) lit le copybook et produit le layout physique (et, en option, une projection JSON Schema qui guide la saisie — ou une IA générative) ;
+2. **schéma → données JSON** : un humain (ou une IA) écrit les enregistrements ;
+3. **JSON → fichier séquentiel** : cette tâche.
+
+:::tip Déterministe par construction
+`testdata-generate` ne **génère aucune valeur** : c'est un sérialiseur. Même copybook + même JSON = fichier **identique à l'octet près**, à chaque exécution, sur toutes les plateformes. C'est ce qui rend les jeux d'essai reproductibles et les comparaisons ([`data-compare`](data-compare)) fiables.
+:::
+
+## Exemple rapide
+
+```yaml
+steps:
+  - id: generate
+    uses: testdata-generate
+    with:
+      copybook: copybooks/CUSTOMER.cpy       # le layout d'entrée
+      search_paths: [copybooks/]             # où résoudre les COPY imbriqués
+      data: data/customer.data.json          # vos enregistrements en JSON
+      output: build/CUSTOMER.testdata        # le fichier séquentiel produit
+      encoding: utf-8                        # ou ebcdic (voir plus bas)
+      manifest: build/CUSTOMER.manifest.json # traçabilité (optionnel)
+```
+
+Le fichier de données JSON : un objet avec un tableau `records`, les noms de champs sont les noms COBOL :
+
+```json
+{
+  "records": [
+    {
+      "CUST-ID": 100042,
+      "CUST-NAME": "MARTIN DUPONT",
+      "CUST-BALANCE": 1523.75
+    },
+    {
+      "CUST-ID": 100043,
+      "CUST-NAME": "ANNA SCHMIDT"
+    }
+  ]
+}
+```
+
+Un champ absent prend la valeur `VALUE` du copybook s'il y en a une, sinon espaces (alphanumérique) ou zéro (numérique). Les tables `OCCURS` sont des tableaux JSON avec la cardinalité exacte.
+
+## Entrées
+
+| Entrée | Type | Requis | Description |
+|--------|------|--------|-------------|
+| `copybook` | string | oui | Copybook d'entrée (mêmes sémantiques `search_paths`/`replacing` que `copybook-schema`). |
+| `search_paths` | string[] | non | Répertoires où résoudre les `COPY` imbriqués. |
+| `replacing` | object[] | non | Règles `REPLACING` de premier niveau (`from`, `to`, `word`, `leading`, `trailing`). |
+| `data` | string | oui | Fichier JSON : `{"records": [ ... ]}`. |
+| `output` | string | oui | Fichier séquentiel produit. |
+| `encoding` | string | non | `utf-8` (défaut) ou `ebcdic`. |
+| `codepage` | string | non | Table EBCDIC : `ibm-1047` (défaut), `cp037`, `cp1140`, `cp297`, `cp1147`, `cp500`, `cp1148`. |
+| `manifest` | string | non | Écrit le manifeste de sérialisation à ce chemin. |
+
+## Sorties
+
+| Sortie | Description |
+|--------|-------------|
+| `output` | Chemin du fichier produit. |
+| `records` | Nombre d'enregistrements sérialisés. |
+| `encoding` | Encodage effectif. |
+| `uploadMode` | L'instruction d'upload z/OSMF correspondante : `text` ou `binary`. |
+| `manifest` | Chemin du manifeste (si demandé). |
+
+## Encodage : la question qui fâche, réglée simplement
+
+C'est LE piège classique des transferts mainframe. La règle appliquée par la tâche :
+
+| Votre layout | `encoding` | Fichier produit | Upload z/OSMF |
+|--------------|-----------|-----------------|----------------|
+| 100 % caractères (`PIC X`, zoned, `SIGN SEPARATE`) | `utf-8` (défaut) | Un enregistrement par ligne, UTF-8 | Mode **text** — l'hôte convertit en EBCDIC et complète au RECFM |
+| Contient du `COMP` / `COMP-3` | `ebcdic` | Image binaire exacte : caractères dans la codepage cible, packed/binaire bruts, enregistrements de longueur fixe concaténés | Mode **binary** vers un dataset `RECFM=FB, LRECL=totalLength` |
+
+Pourquoi cette règle ? Un champ `COMP-3` (packed decimal) contient des octets qui **ne sont pas du texte**. Si z/OSMF les convertit comme du texte, ils sont détruits. La tâche vous protège : demander `utf-8` sur un layout mixte **échoue avec un message pédagogique** qui indique la correction (`encoding: ebcdic` + upload binaire) — plutôt que de produire un fichier silencieusement corrompu.
+
+La sortie `uploadMode` vous dit exactement quel mode passer à [`zos-datasets`](zos-datasets) en aval :
+
+```yaml
+  - id: upload
+    uses: zos-datasets
+    with:
+      action: upload
+      localPath: ${{ steps.generate.outputs.output }}
+      dataset: ${{ inputs.hlq }}.TEST.DATA
+      mode: ${{ steps.generate.outputs.uploadMode }}
+```
+
+## Validation exhaustive
+
+La tâche valide le JSON contre le layout **avant** d'écrire quoi que ce soit, et rapporte **tous** les problèmes en une seule fois, chacun avec son chemin JSON exact :
+
+```
+records[3].ORDER-LINE[1].LINE-QTY: value 100000 exceeds PIC 9(4) bounds
+records[7].CUST-NAME: 45 characters exceed PIC X(30) — no silent truncation
+```
+
+Les numériques sont vérifiés en **décimal exact** (bornes, échelle, jamais d'arrondi) ; les chaînes ne sont **jamais tronquées silencieusement**. Les `FILLER` et les vues `REDEFINES` ne sont pas adressables. Les level-88 ferment le domaine de valeurs du champ.
+
+## Le manifeste
+
+Un document JSON de traçabilité (`manifest_version: 1`) : copybook, règles `replacing` appliquées, nombre d'enregistrements, `totalLength`, encodage/codepage, mode d'upload attendu, et le **SHA-256 du fichier produit**. Les faits volatils (`generatedAt`, version de l'outil) sont isolés sous `meta` — deux exécutions à entrées identiques produisent des manifestes identiques à l'octet hors `meta`. Idéal pour prouver en audit qu'un jeu d'essai correspond bien à sa source JSON.
+
+## Limites v1 (refusées avec un diagnostic précis)
+
+`OCCURS DEPENDING ON`, `COMP-1`/`COMP-2` (flottants), pictures éditées, vue `REDEFINES` plus longue que sa base, caractères de contrôle dans les valeurs.
+
+## Voir aussi
+
+- [`copybook-schema`](copybook-schema) — l'étape 1 : dériver le layout depuis le copybook.
+- [`data-inspect`](data-inspect) — relire champ par champ le fichier produit (le contrôle visuel).
+- [`data-compare`](data-compare) — comparer une sortie de batch à un fichier de référence généré ici.

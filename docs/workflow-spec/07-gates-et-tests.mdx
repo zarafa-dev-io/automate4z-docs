@@ -1,0 +1,132 @@
+---
+sidebar_position: 7
+title: Gates, verdicts et tests
+---
+
+# Gates, verdicts et tests
+
+Cette page explique **trois idées qui reviennent partout** dans a4z dès qu'un workflow contrôle quelque chose : la différence entre un contrôle qui échoue et un contrôle qui n'a pas pu tourner, l'idiome de gate `continueOnError` + `if:`, et le bloc `tests:`. Comprenez-les une fois, et toutes les tâches de contrôle ([`assert`](../task-reference/assert), [`data-compare`](../task-reference/data-compare), [`job-assert`](../task-reference/job-assert), [`build-impact`](../task-reference/build-impact), [`zos-build`](../task-reference/zos-build)…) se ressemblent.
+
+## 1. Deux façons d'échouer, et pourquoi ça compte
+
+Prenez une comparaison de fichiers. Deux choses très différentes peuvent « mal se passer » :
+
+- **Le contrôle a conclu, et la conclusion est mauvaise** : les fichiers diffèrent. Le programme sous test a une régression. C'est un résultat — précieux, exploitable, avec un fichier de différences à examiner.
+- **Le contrôle n'a pas pu conclure** : le fichier de référence est introuvable, le layout est invalide. On ne sait pas si le programme a une régression — le *test* est cassé, pas (forcément) le programme.
+
+Les mélanger, c'est le défaut classique des scripts maison : un `diff` qui rend 1, est-ce une régression ou un fichier manquant ? a4z les sépare **structurellement** :
+
+| Famille | Exemple | Comportement |
+|---------|---------|--------------|
+| **Échec de contrôle** (« exit 1 ») | différence de données, assertion non tenue, artefacts à recompiler, build en échec | Le step échoue, **mais** le fichier de résultat est intégralement écrit et les outputs (`passed`, compteurs…) restent disponibles pour la suite du workflow |
+| **Panne technique** (« exit 2 ») | fichier manquant, layout invalide, z/OSMF injoignable, motif regex invalide | Le step échoue et ne produit **aucun fichier de résultat partiel** — impossible de prendre une analyse incomplète pour un verdict |
+
+Règle mnémotechnique : **un échec de contrôle laisse toujours son diagnostic derrière lui ; une panne technique ne laisse jamais un demi-résultat trompeur.**
+
+À l'échelle du processus, `a4z run` reste volontairement simple : `0` tout a réussi, `1` au moins un step a échoué, `2` le run n'a même pas pu être tenté (YAML invalide, cycle dans le DAG). La distinction fine se joue *dans* le workflow, avec les outputs — c'est l'objet de la section suivante.
+
+## 2. L'idiome de gate : `continueOnError` + `if:`
+
+Comment dire « si le contrôle détecte quelque chose, alors fais ceci » ? Le pattern standard, en deux temps :
+
+```yaml
+steps:
+  # 1. Le contrôle. Il ÉCHOUE quand il détecte quelque chose — c'est voulu.
+  #    continueOnError garde le workflow en vie pour la suite.
+  - id: impact
+    uses: build-impact
+    continueOnError: true
+    with:
+      graph: build/depgraph.json
+      output: build/impact.json
+
+  # 2. La réaction, conditionnée sur l'output `passed` du contrôle.
+  - id: build
+    uses: zos-build
+    if: ${{ steps.impact.outputs.passed == false }}
+    with:
+      impact: ${{ steps.impact.outputs.output }}
+      # …
+```
+
+Pourquoi le contrôle échoue-t-il au lieu de simplement remplir `passed` ? Pour que **le cas simple reste simple** : sans `continueOnError` ni `if:`, un `data-compare` qui trouve une régression fait échouer le run — exactement ce qu'on attend d'une non-régression en CI, zéro câblage. La gate n'est nécessaire que quand vous voulez *réagir* à l'échec dans le workflow.
+
+:::warning Le piège n°1 : comparer à `"false"` au lieu de `false`
+`passed` est un **booléen**. `steps.impact.outputs.passed == false` fonctionne ; `== "false"` (avec des guillemets) compare à une **chaîne** et est silencieusement toujours faux — le step gaté ne se déclenche jamais, sans aucune erreur. Si votre gate « ne fait rien », vérifiez ça d'abord.
+:::
+
+Variante avec [`assert`](../task-reference/assert) quand la réaction est simplement « échouer avec un bon message » :
+
+```yaml
+  - id: diff
+    uses: data-compare
+    continueOnError: true
+    with: { schema: layout.json, left: baseline.dat, right: candidate.dat, output: diff.ndjson }
+
+  - id: gate
+    uses: assert
+    with:
+      condition: ${{ steps.diff.outputs.passed == true }}
+      message: "régression détectée — examiner diff.ndjson"
+```
+
+## 3. Le bloc `tests:` — des cas de test lisibles
+
+Pour les scénarios de test, écrire des chaînes de gates à la main devient vite verbeux. Le bloc `tests:` structure ça en **cas de test** avec trois phases nommées :
+
+```yaml
+tests:
+  - id: interets_mensuels
+    setup:                      # préparer : fixtures, layouts…
+      - id: fixtures
+        uses: testdata-generate
+        with: { copybook: compte.cpy, data: fixtures/comptes.json, output: out/comptes.dat, encoding: ebcdic }
+    execute:                    # exécuter : le batch sous test
+      - id: run_batch
+        uses: zos-jobs
+        with: { jcl: jcl/interets.jcl, lpar: dev01 }
+      - id: analyze
+        uses: spool-analyze
+        with: { jobid: "${{ steps.run_batch.outputs.jobId }}", fail_on: never }
+    assert:                     # vérifier : les assertions
+      - id: job_ok
+        uses: job-assert
+        with:
+          analysis: ${{ steps.analyze.outputs }}
+          expect: { verdict: success, max_rc: 4 }
+
+steps:
+  - id: report
+    uses: test-report
+    with: { output: out/junit.xml, suite: batch-tests }
+```
+
+Sous le capot, c'est du **sucre syntaxique** : chaque cas est désucré en steps ordinaires au chargement — un seul moteur d'exécution, et votre YAML n'est jamais réécrit.
+
+### Le verdict d'un cas
+
+Chaque cas ressort avec l'un de trois verdicts — et vous reconnaîtrez la distinction de la section 1 :
+
+| Verdict | Signification | Dans le rapport JUnit |
+|---------|---------------|------------------------|
+| `passed` | Toutes les assertions tiennent | testcase vert |
+| `failed` | Au moins une assertion en échec — **le programme a un problème** | `<failure>` |
+| `error` | Panne technique d'un step du cas — **le test n'a pas pu conclure** | `<error>` |
+
+### Les règles de vie d'une suite
+
+- **Séquentiel dans un cas** : comme partout dans a4z, un step sans `needs` dépend du précédent *du cas*.
+- **Isolation entre cas** : un cas `failed` ou `error` n'arrête **jamais** les autres cas. Une assertion en échec n'interrompt pas les assertions suivantes du même cas (évaluation exhaustive : vous voyez tout en une passe).
+- **Préparatifs partagés** : le premier step d'un cas est exempté de la dépendance séquentielle sur ce qui précède (c'est l'isolation) — un step de `steps:` partagé par plusieurs cas (un layout dérivé une fois, par exemple) doit donc être référencé **explicitement** par `needs:`.
+- **Le workflow porteur échoue** dès qu'un cas n'est pas `passed` ; les verdicts par cas sont affichés en fin de run.
+- `fail_fast: true` sur un cas : s'il n'est pas `passed`, les cas restants sortent en `error`.
+- Les ids de steps restent **globaux** au workflow : deux cas ne peuvent pas réutiliser le même id.
+
+### Et la CI voit tout
+
+[`test-report`](../task-reference/test-report) transforme les verdicts en JUnit XML — le format que Jenkins, GitLab et GitHub affichent nativement. Un step `test-report` sans `needs:` est automatiquement ordonnancé après tous les cas. Résultat : **vos tests batch mainframe apparaissent dans la CI comme n'importe quelle suite de tests Java**, détail par cas et pièces jointes (le diff NDJSON d'un `data-compare` en échec) comprises.
+
+## Pour aller plus loin
+
+- [Construire et tester](../guides/build-and-test) — un pipeline complet qui utilise tous ces idiomes.
+- [`spool-analyze`](../task-reference/spool-analyze), [`job-assert`](../task-reference/job-assert), [`data-compare`](../task-reference/data-compare) — les tâches de contrôle principales.

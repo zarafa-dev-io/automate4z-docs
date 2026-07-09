@@ -1,0 +1,92 @@
+---
+sidebar_position: 27
+title: source-scan
+---
+
+# `source-scan` — Map your sources' dependencies
+
+Scans a local source tree (COBOL, copybooks, JCL) and produces a **dependency graph** in JSON: who includes which copybook, who calls which program, which JCL executes what. This is the first stage of the build pipeline ([`build-impact`](build-impact) → [`zos-build`](zos-build)) — the equivalent of IBM DBB's dependency discovery, **100% local, with nothing installed on the mainframe**.
+
+## The problem it solves
+
+"If I change this copybook, what do I need to recompile?" On most sites, the answer lives in a veteran's head, a spreadsheet, or a proprietary product. Once your sources are in Git, `source-scan` rebuilds that knowledge on demand — and since the graph is a **byte-deterministic** JSON, you can commit it and see in code review *the dependencies that change* along with the code.
+
+```yaml
+steps:
+  - id: scan
+    uses: source-scan
+    with:
+      root: sources                     # root of the scanned tree
+      layout:
+        cobol: src/cobol/**/*.cbl       # which files are what (globs)
+        copybook: src/copybook/**/*.cpy
+        jcl: src/jcl/**/*.jcl
+      output: build/depgraph.json
+```
+
+## What the scan detects
+
+A **targeted lexical** detection — not a compiler, but precise rules that respect COBOL fixed format (columns 7 and 72, opaque string literals: a `DISPLAY 'COPY X'` produces nothing):
+
+| In | Detected | Edge produced |
+|----|----------|---------------|
+| COBOL / copybook | `COPY MEMBER` (with or without `REPLACING`) | `copy` — copybooks are **scanned too**, so COPY chains make impact transitive |
+| COBOL | `CALL 'LITERAL'` | `call` (static, resolved by `PROGRAM-ID`) |
+| COBOL | `CALL IDENTIFIER` (variable) | `dynamic-unresolved` — **never resolved, never guessed** |
+| COBOL | `EXEC SQL INCLUDE` | `sql-include` |
+| JCL | `PGM=PROGRAM`, `INCLUDE MEMBER=` | `jcl-ref` |
+| JCL | `PGM=&SYMBOL` | `dynamic-unresolved` |
+
+The golden rule: **never guess**. A dynamic call is recorded as such — knowing what the variable holds at run time is your job.
+
+## Inputs
+
+| Input | Type | Required | Description |
+|-------|------|----------|-------------|
+| `root` | string | no | Root of the scanned tree, relative to the workflow directory (default: the workflow directory). |
+| `layout` | object | yes | Which files belong to which type: `cobol`, `copybook`, `jcl` — each one glob (string) or a list of globs (`**` supported). |
+| `output` | string | yes | Path of the produced graph JSON (`schema_version: 1`). |
+| `strict` | boolean | no | Fail when a **static** dependency cannot be resolved within the scanned inventory (dynamic edges never count). The graph is fully produced either way. |
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| `output` | Graph path. |
+| `artifacts` | Number of scanned artifacts. |
+| `edges` | Number of dependency edges. |
+| `unresolved` | Static edges unresolved within the tree. |
+| `dynamic` | Dynamic edges (variable `CALL`, `PGM=&SYM`). |
+| `passed` | `false` when `strict: true` and `unresolved > 0`. |
+
+## Resolution: closed world, deterministic result
+
+References are resolved **against the scanned inventory** (name → artifact index), not by probing the disk: the same tree always produces exactly the same graph — artifacts sorted by path, edges sorted, SHA-256 per source. Committable, diffable.
+
+A static dependency that does not resolve (a system utility called by a JCL, a copybook outside the tree) is **not an error**: it is kept without a path and counted in `summary.unresolved`. It is **data** — often the sign that a dependency should be declared in a [`z-deps`](z-deps) manifest. To make it a blocking check:
+
+```yaml
+      strict: true    # an unresolved static = failed step (graph still produced)
+```
+
+## The produced graph
+
+```json
+{
+  "schema_version": 1,
+  "artifacts": [
+    { "path": "src/cobol/CUSTUPD.cbl", "type": "cobol", "name": "CUSTUPD",
+      "deps": [
+        { "type": "copy", "target": "CUSTREC", "path": "src/copybook/CUSTREC.cpy" },
+        { "type": "call", "target": "SUBCALC", "path": "src/cobol/SUBCALC.cbl" }
+      ] }
+  ],
+  "summary": { "artifacts": 7, "edges": 11, "unresolved": 2, "dynamic": 2 }
+}
+```
+
+## See also
+
+- [`build-impact`](build-impact) — the next stage: cross this graph with a Git diff.
+- [Build and test (full pipeline)](../guides/build-and-test) — the end-to-end demonstrator.
+- [`z-deps`](z-deps) — dependencies *outside* the tree (leaf nodes of the graph).

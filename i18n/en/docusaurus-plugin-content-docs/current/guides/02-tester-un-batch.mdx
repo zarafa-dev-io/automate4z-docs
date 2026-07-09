@@ -1,0 +1,125 @@
+---
+sidebar_position: 2
+title: Testing a batch
+---
+
+# Testing a batch program like code
+
+Mainframe batch lives in a **pipeline blind spot**: a job either "ran" or it didn't, and whether it actually did *the right thing* usually means someone opening SDSF, eyeballing a spool, and comparing an output by hand. a4z's `tests:` block turns that into an ordinary test suite — the same JUnit XML Jenkins, GitLab and GitHub already render natively, produced from real spool analysis and real field-by-field dataset comparison, not a shell script grepping for `RETURN CODE 0000`.
+
+## The pattern
+
+```
+fixtures → job → spool-analyze → job-assert + data-compare → test-report
+```
+
+Four tasks, each in its place:
+
+- [`spool-analyze`](../task-reference/spool-analyze) turns the job's spool into structured data: verdict, return codes, abends, cataloged messages.
+- [`job-assert`](../task-reference/job-assert) asserts on that structure — verdict, per-step RC, required/forbidden messages — never re-parsing the spool.
+- [`data-compare`](../task-reference/data-compare) asserts on the job's **output**: the produced dataset, diffed against a golden, field by field, on decoded values.
+- [`test-report`](../task-reference/test-report) aggregates every case's verdict into JUnit XML.
+
+A case fails the moment either assertion does; `test-report` says which one and why. A batch is thus tested on its **two observable faces**: its execution (the spool) and its result (the file).
+
+## A complete example, runnable without a mainframe
+
+The repository ships `examples/batch-canonical-suite.yml`: two cases, 100% local. The spools are **replayed from archived fixtures** — offline replay is a first-class `spool-analyze` use case, so the assertion logic is exactly what runs against a live job (only `source:`/`jobid:` changes).
+
+- `nightly_batch_ok`: a clean run — RC 0 spool, output dataset identical to the golden. Both assertions pass.
+- `nightly_batch_regression`: RC 8 **and** a dataset drifting from the golden — the double regression a real incident usually looks like.
+
+```yaml
+tests:
+  - id: nightly_batch_ok
+    setup:
+      - id: analyze_ok
+        uses: spool-analyze
+        with: { source: tst/success.spool }
+      - id: gen_candidate_ok
+        uses: testdata-generate
+        with: { copybook: tst/customer.cpy, data: tst/candidate-ok.json,
+                output: output/candidate-ok.dat, encoding: ebcdic, codepage: cp037 }
+    assert:
+      - id: assert_job_ok
+        uses: job-assert
+        with:
+          analysis: ${{ steps.analyze_ok.outputs }}
+          expect: { verdict: success }
+      - id: compare_output_ok
+        uses: data-compare
+        needs: [derive_layout, gen_golden, gen_candidate_ok]
+        continueOnError: true
+        with: { schema: output/layout.json, left: output/golden.dat,
+                right: output/candidate-ok.dat, output: output/diff-ok.ndjson }
+```
+
+Run the suite, and `output/junit.xml` shows exactly what a real incident would:
+
+```xml
+<testsuite name="batch-canonical-suite" tests="2" failures="1" errors="0" time="0.046">
+  <testcase name="nightly_batch_ok" classname="batch-canonical-suite" time="0.024"></testcase>
+  <testcase name="nightly_batch_regression" classname="batch-canonical-suite" time="0.022">
+    <failure message="step assert_job_bad: job-assert: 1 assertion(s) failed:">
+      step assert_job_bad: job-assert: 1 assertion(s) failed:
+        - verdict: expected "success", observed "warning"
+    </failure>
+  </testcase>
+</testsuite>
+```
+
+## The two subtleties the example already works around
+
+They are explained in detail in [Gates, verdicts and tests](../workflow-spec/gates-et-tests); in short:
+
+1. **Case isolation**: a case's first step is exempt from the implicit sequential dependency — that is what isolates cases from each other. The flip side: an assert step depending on a prep step declared *outside* its case (a shared layout, a golden dataset) must name it **explicitly** in `needs:`.
+2. **`test-report`'s fan-in**: without an explicit `needs:`, `test-report` is auto-wired after every case's last step — but that wiring expects "satisfied" dependencies. `continueOnError: true` on the assert steps guarantees it (the **case verdict** is still computed off the step's real status; `continueOnError` never masks it); without it, a failing case would block `test-report` from ever running.
+
+## Wiring the CI
+
+### Jenkins (declarative pipeline)
+
+```groovy
+pipeline {
+    agent any
+    stages {
+        stage('Batch tests') {
+            steps {
+                sh 'a4z run workflows/batch-tests.yml'
+            }
+        }
+    }
+    post {
+        always {
+            junit 'output/junit.xml'
+        }
+    }
+}
+```
+
+`a4z run` exits 1 as soon as any case is not `passed` — put `junit` in `post { always }` so the report still publishes on a red build.
+
+### GitLab CI
+
+```yaml
+batch-tests:
+  stage: test
+  script:
+    - a4z run workflows/batch-tests.yml
+  artifacts:
+    when: always
+    reports:
+      junit: output/junit.xml
+```
+
+GitLab's native `reports: junit:` renders the suite directly in the merge request's **Tests** tab — no plugin. `when: always` keeps the artifact even when the job fails.
+
+## The v1 boundary, owned
+
+Everything above tests a job's **observable behavior**: spool and output dataset. Testing an isolated COBOL subprogram (unit-test style) would require *driving* it — generating a caller that fills its `LINKAGE SECTION`, invokes it, and captures what comes back. That is a deliberate v1 boundary, not an oversight: the documented v2 trajectory builds on the copybook parser (the same layout model a LINKAGE SECTION uses) and on [`zos-build`](../task-reference/zos-build) to compile and run the generated driver.
+
+## See also
+
+- [Gates, verdicts and tests](../workflow-spec/gates-et-tests) — the verdict contract and the `tests:` block idioms.
+- [Build and test](build-and-test) — the build pipeline that naturally feeds this suite.
+- [`data-compare`](../task-reference/data-compare) — matching modes, `ignore:` exclusions.

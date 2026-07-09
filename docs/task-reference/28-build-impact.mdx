@@ -1,0 +1,112 @@
+---
+sidebar_position: 28
+title: build-impact
+---
+
+# `build-impact` — Que faut-il recompiler ?
+
+Croise un diff Git avec le graphe de [`source-scan`](source-scan) et répond à la question du build incrémental : **quels artefacts sont impactés par ce changement, et dans quel ordre les reconstruire**. C'est le calcul d'impact d'IBM DBB, exécuté 100 % en local.
+
+## Le principe en une image
+
+Le copybook `CUSTREC` change. Qui est touché ?
+
+```
+CUSTREC.cpy (modifié)
+   └── CUSTUPD.cbl      → l'inclut par COPY : à recompiler
+         └── RUNJOB.jcl → exécute CUSTUPD : impacté (traçabilité)
+SUBCALC.cbl             → n'inclut pas CUSTREC : rien à faire
+```
+
+La tâche calcule la **fermeture transitive inverse** : un copybook modifié impacte tous les programmes qui l'incluent — directement ou via une chaîne de `COPY` — et un programme modifié impacte les JCL qui le référencent.
+
+```yaml
+steps:
+  - id: scan
+    uses: source-scan
+    with: { root: sources, layout: { … }, output: build/depgraph.json }
+
+  - id: impact
+    uses: build-impact
+    continueOnError: true          # « il y a du travail » n'est pas une panne
+    with:
+      graph: build/depgraph.json
+      from: ${{ inputs.base_sha }} # réf Git de base (défaut HEAD~1)
+      to: HEAD                     # réf Git de tête (défaut HEAD)
+      output: build/impact.json
+```
+
+## Entrées
+
+| Entrée | Type | Requis | Description |
+|--------|------|--------|-------------|
+| `graph` | string | oui | Graphe de dépendances produit par `source-scan`. |
+| `from` | string | non | Réf Git de base du change set (défaut `HEAD~1`) — ex. le SHA de base d'une merge request. |
+| `to` | string | non | Réf Git de tête (défaut `HEAD`). |
+| `changed` | string[] | non | Liste **explicite** de fichiers modifiés (chemins relatifs à la racine scannée), sans passer par Git — pour les CI qui portent déjà le change set, ou les démos hors-ligne déterministes. Exclusif avec `from`/`to`. |
+| `root` | string | non | Racine de l'arbre scanné dans le dépôt Git (doit correspondre au `root` de `source-scan`, pour que les chemins du diff s'alignent sur ceux du graphe). |
+| `output` | string | oui | Chemin de l'analyse d'impact JSON produite (`schema_version: 1`). |
+
+Les fichiers modifiés qui ne sont pas dans le graphe (docs, YAML…) sont ignorés — non pertinents pour un build.
+
+## Sorties
+
+| Sortie | Description |
+|--------|-------------|
+| `output` | Chemin du document d'analyse. |
+| `changed` | Fichiers modifiés qui sont des artefacts du graphe. |
+| `impacts` | Artefacts impactés, tous types (traçabilité). |
+| `buildable` | Artefacts qu'un build reconstruit réellement (programmes COBOL). |
+| `passed` | `true` quand il n'y a rien à reconstruire. |
+
+## Le document d'analyse : ordre de build et « pourquoi »
+
+Chaque entrée porte `via` — le **chemin d'impact** le plus court depuis un artefact modifié. C'est le « pourquoi ce rebuild » d'une revue :
+
+```json
+{
+  "impacts": [
+    { "path": "src/copybook/CUSTREC.cpy", "type": "copybook", "name": "CUSTREC" },
+    { "path": "src/cobol/CUSTUPD.cbl", "type": "cobol", "name": "CUSTUPD",
+      "via": ["src/copybook/CUSTREC.cpy"] },
+    { "path": "src/jcl/RUNJOB.jcl", "type": "jcl", "name": "RUNJOB",
+      "via": ["src/copybook/CUSTREC.cpy", "src/cobol/CUSTUPD.cbl"] }
+  ],
+  "summary": { "changed": 1, "impacts": 3, "buildable": 1 }
+}
+```
+
+Deux garanties structurantes :
+
+- **Ordre topologique dépendances-d'abord** : un sous-programme appelé apparaît avant son appelant — [`zos-build`](zos-build) consomme cette liste telle quelle et compile dans le bon ordre. Un cycle de dépendances dans l'ensemble impacté est une erreur explicite qui nomme les artefacts (aucun ordre de build sûr n'existe).
+- **Seuls les programmes COBOL comptent en `buildable`** : les copybooks et JCL figurent dans `impacts` pour la traçabilité, mais on ne « compile » pas un copybook — la gate porte sur `buildable`.
+
+## La gate : « rien à faire » passe, « du travail » déclenche
+
+`build-impact` suit le contrat de gate du produit (voir [Gates, verdicts et tests](../workflow-spec/gates-et-tests)) : des artefacts à reconstruire = **le step échoue** (échec typé, l'analyse et les sorties restent disponibles) ; rien à reconstruire = le step passe. Le pattern complet :
+
+```yaml
+  - id: impact
+    uses: build-impact
+    continueOnError: true
+    with: { graph: build/depgraph.json, output: build/impact.json }
+
+  - id: build
+    uses: zos-build
+    if: ${{ steps.impact.outputs.passed == false }}   # booléen, pas "false" !
+    with:
+      impact: ${{ steps.impact.outputs.output }}
+      # …
+```
+
+:::warning Le piège de la comparaison
+`steps.impact.outputs.passed == false` compare un **booléen**. Écrire `== "false"` (chaîne) est silencieusement toujours faux — le step gaté ne se déclencherait jamais. C'est l'erreur la plus fréquente sur cet idiome.
+:::
+
+Une panne technique (graphe absent ou invalide, réf Git inconnue, cycle) est un échec distinct qui ne produit **aucun fichier** — impossible de confondre « rien à builder » et « l'analyse n'a pas pu tourner ».
+
+## Voir aussi
+
+- [`source-scan`](source-scan) — produit le graphe consommé ici.
+- [`zos-build`](zos-build) — consomme cette analyse et compile via z/OSMF.
+- [Construire et tester (pipeline complet)](../guides/build-and-test) — le démonstrateur de bout en bout.

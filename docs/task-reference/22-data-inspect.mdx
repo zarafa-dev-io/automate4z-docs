@@ -1,0 +1,99 @@
+---
+sidebar_position: 22
+title: data-inspect
+---
+
+# `data-inspect` — Lire un dataset champ par champ
+
+Décode un dataset séquentiel z/OS brut **champ par champ** à l'aide d'un copybook : chaque champ ressort **nommé, positionné et décodé** (packed, binaire, zoned — y compris le signe overpunch —, display), avec **l'hexadécimal à côté** pour le diagnostic.
+
+## Le problème que ça résout
+
+Regarder le contenu d'un fichier batch aujourd'hui, c'est ouvrir une session 3270, faire un `BROWSE` en hexadécimal, et compter les colonnes à la main avec le copybook imprimé à côté. `data-inspect` fait ce travail : il applique le copybook au fichier et vous montre `CUST-BALANCE = 1523.75` là où l'écran 3270 montrait `x'1523750C'`.
+
+```yaml
+steps:
+  - id: derive_layout
+    uses: copybook-schema
+    with: { input: order.cpy, output: order-layout.json }
+
+  - id: inspect
+    uses: data-inspect
+    with:
+      schema: order-layout.json    # layout produit par copybook-schema
+      source: order.dat            # dataset séquentiel brut (flux binaire)
+      output: order-inspected.ndjson
+      encoding: cp037              # codepage EBCDIC des zones caractères
+```
+
+:::caution Flux binaire brut attendu
+`source` doit être le fichier **tel que transféré en mode binaire z/OSMF** (via [`zos-datasets`](zos-datasets) `mode: binary`). Ne transférez jamais en mode texte un fichier qui contient du packed ou du binaire : la conversion de codepage détruirait ces octets. La tâche ne « devine » jamais une conversion amont.
+:::
+
+## Entrées
+
+| Entrée | Type | Requis | Description |
+|--------|------|--------|-------------|
+| `schema` | string | oui | Layout JSON produit par `copybook-schema`. |
+| `source` | string | oui | Dataset séquentiel brut (RECFM F/FB) à inspecter. |
+| `output` | string | oui | Chemin du pivot NDJSON produit. |
+| `records` | string | non | Sélection `"début:fin"`, base 0, fin exclue (ex. `"0:100"`). Absent = tous les enregistrements. |
+| `encoding` | string | non | Codepage EBCDIC des zones caractères : `cp1147` (défaut), `cp037`, `cp1140`, `cp297`, `cp500`, `cp1148`, `cp1047`. |
+| `exitOnError` | boolean | non | Fait échouer le step à la moindre erreur de décodage (gate qualité de données). Le pivot NDJSON est produit intégralement dans tous les cas. |
+
+## Sorties
+
+| Sortie | Description |
+|--------|-------------|
+| `output` | Chemin du pivot NDJSON. |
+| `records` | Nombre d'enregistrements inspectés. |
+| `errors` | Nombre total de champs en `status: "error"`. |
+| `passed` | `true` quand `errors` vaut zéro. |
+
+## Le pivot NDJSON : une seule vérité, plusieurs vues
+
+La tâche écrit un fichier **NDJSON** (une ligne JSON par entrée) versionné (`schema_version: 1`) : une ligne `meta`, une ligne `record` par enregistrement, une ligne `summary` finale. Chaque champ porte `path`, `offset`, `length`, `raw` (l'hexadécimal), `value` (la valeur décodée) et `status` :
+
+```json
+{"type":"record","index":0,"fields":[
+  {"path":"CUST-ID","offset":0,"length":6,"raw":"F1F0F0F0F4F2","value":100042,"status":"ok"},
+  {"path":"CUST-BALANCE","offset":36,"length":5,"raw":"0001523750C","value":1523.75,"status":"ok"}
+]}
+```
+
+Ce pivot est **l'unique chemin de décodage** : le rendu tableau en terminal, le Studio, VSCode et `jq` ne font que le projeter — aucun d'eux ne re-décode. La **double vue `raw` + `value`** fait partie du contrat : quand une valeur surprend, l'hexadécimal est déjà là pour trancher.
+
+## Une erreur de décodage est une donnée, pas une panne
+
+C'est le principe central de la tâche. Un quartet de signe packed invalide, un zoned non numérique, un binaire tronqué : le champ ressort avec `status: "error"`, `value: null` et un diagnostic qui nomme l'octet fautif — **et l'inspection continue** sur les champs et enregistrements suivants. Vous voyez ainsi *toutes* les anomalies du fichier en une passe, pas seulement la première.
+
+Pour transformer cette tolérance en **contrôle qualité bloquant**, ajoutez `exitOnError: true` : la moindre erreur fait alors échouer le step (erreur typée, distincte d'une panne technique) — mais le pivot est toujours écrit en entier d'abord, donc **le diagnostic survit à la gate**.
+
+```yaml
+  - id: quality_gate
+    uses: data-inspect
+    with:
+      schema: layout.json
+      source: incoming.dat
+      output: inspection.ndjson
+      exitOnError: true          # fichier douteux = step en échec, pivot complet dispo
+```
+
+## REDEFINES et OCCURS DEPENDING ON
+
+- **`REDEFINES`** : toutes les vues sont décodées (offsets partagés). Une erreur sur une vue non pertinente pour cet enregistrement n'affecte ni les autres vues ni le code de sortie (sauf `exitOnError`).
+- **`OCCURS DEPENDING ON`** : les tables sont décodées selon la **valeur réelle du compteur** lue dans chaque enregistrement — pas le maximum statique. Un compteur hors bornes transforme les occurrences concernées en données d'erreur, et l'inspection continue.
+
+## Erreurs techniques
+
+Distinctes de la gate qualité : `schema`/`source` manquant, fichier illisible, ou une taille de fichier qui n'est **pas un multiple de la longueur d'enregistrement** (indice classique d'un transfert en mode texte au lieu de binaire, ou d'un RECFM V) font échouer le step **sans produire de fichier partiel**.
+
+## Limites v1
+
+RECFM F/FB uniquement. Hors périmètre : filtre `--where`, RECFM V/VB, VSAM direct, sélection de vue REDEFINES, sortie CSV/parquet.
+
+## Voir aussi
+
+- [`copybook-schema`](copybook-schema) — produit le layout consommé ici.
+- [`data-compare`](data-compare) — le même moteur de décodage, appliqué à la comparaison de deux fichiers.
+- [`testdata-generate`](testdata-generate) — générer un fichier de test que `data-inspect` peut contrôler visuellement.

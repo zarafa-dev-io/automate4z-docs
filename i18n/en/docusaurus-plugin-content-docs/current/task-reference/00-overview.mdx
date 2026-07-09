@@ -5,7 +5,7 @@ title: Overview
 
 # Built-in tasks
 
-automate4z ships **21 built-in tasks** in the `a4z` binary, all **Stable**.
+automate4z ships **30 built-in tasks** in the `a4z` binary. They compose freely within a single workflow — that is the product's philosophy: each task does one thing, and the rich scenarios (testing a batch, impact-driven builds) are documented **compositions**, not black boxes.
 
 ## Catalogue
 
@@ -35,9 +35,9 @@ automate4z ships **21 built-in tasks** in the `a4z` binary, all **Stable**.
 | [`zos-datasets`](zos-datasets) | Operations on PDS, sequential datasets, USS |
 | [`z-deps`](z-deps) | Dependency resolution for COBOL/copybooks |
 
-### Mainframe data tasks — test datasets (4)
+### Mainframe data — test datasets and control (7)
 
-The canonical `constitute-test-dataset` workflow: from the copybook to the anonymized dataset.
+From the copybook to the anonymized, inspected and compared test dataset — no 3270 session.
 
 | Task | Domain |
 |------|--------|
@@ -45,6 +45,29 @@ The canonical `constitute-test-dataset` workflow: from the copybook to the anony
 | [`record-decode`](record-codec) | Fixed records → NDJSON per the layout |
 | [`record-encode`](record-codec) | NDJSON → fixed records (round-trip guaranteed) |
 | [`pii-anonymize`](pii-anonymize) | Deterministic pseudonymization with declarative rules |
+| [`testdata-generate`](testdata-generate) | Readable JSON → copybook-conforming sequential file (deterministic) |
+| [`data-inspect`](data-inspect) | Field-by-field read of a raw dataset, hex + decoded value |
+| [`data-compare`](data-compare) | Diff two datasets on **decoded values** — batch non-regression |
+
+### Batch testing (3)
+
+The [`tests:` block](../workflow-spec/gates-et-tests) and its tasks: your batches tested like code, visible in CI as a JUnit suite.
+
+| Task | Domain |
+|------|--------|
+| [`spool-analyze`](spool-analyze) | Raw JES2 spool → structured JSON diagnostic (steps, RCs, abends, verdict) |
+| [`job-assert`](job-assert) | Assertions on the analysis report (verdict, per-step RC, messages) |
+| [`test-report`](test-report) | Test-case verdicts → JUnit XML report for Jenkins/GitLab/GitHub |
+
+### Build (3)
+
+The DBB-style incremental build pipeline, with nothing installed on the LPAR — see the [Build and test](../guides/build-and-test) guide.
+
+| Task | Domain |
+|------|--------|
+| [`source-scan`](source-scan) | Local sources → dependency graph (COPY, CALL, PGM=) |
+| [`build-impact`](build-impact) | Git diff × graph → artifacts to recompile, in topological order |
+| [`zos-build`](zos-build) | Compile/link through z/OSMF, verdict by the spool-analyze engine |
 
 ### AI task (1)
 
@@ -62,22 +85,26 @@ The `zos-db2` and `zos-endevor` tasks, initially planned, are **deferred**: they
 
 ### Implicit outputs
 
-Every step automatically exposes these three outputs, regardless of the task:
+Every step automatically exposes these three outputs, whatever the task:
 
 | Output | Type | Description |
 |--------|------|-------------|
 | `exitCode` | integer | Return code (0 = success) |
-| `duration` | string | Execution duration (Go format, e.g. `1.23s`) |
-| `status` | string | `success`, `failure`, `skipped`, or `cancelled` |
+| `duration` | string | Execution time (Go format, e.g. `1.23s`) |
+| `status` | string | `success`, `failure`, `skipped` or `cancelled` |
 
 ### Relative paths
 
-Relative paths are resolved against the **directory of the workflow YAML file**, not the CWD of the `a4z` process.
+Relative paths are resolved against the **workflow YAML file's directory**, not the `a4z` process CWD.
 
 ### z/OS profiles
 
-`zos-*` and `z-deps` tasks resolve credentials via the profile specified by `--profile <name>` at launch, or the `default` profile (`~/.automate4z/profiles/<name>.yml` + native keychain for secrets).
+The `zos-*` and `z-deps` tasks resolve their credentials via the profile given by `--profile <name>` at launch, or the `default` profile (`~/.automate4z/profiles/<name>.yml` + native keyring for secrets).
 
 ### Encodings
 
-Transfers between the local machine (UTF-8) and z/OS (EBCDIC, typically IBM-1047) are handled by the adapters with a sensible default and an explicit `encoding` option.
+Transfers between the local workstation (UTF-8) and z/OS (EBCDIC) are handled by the adapters with a sane default and an explicit `encoding` option. The data tasks (`data-inspect`, `data-compare`, `testdata-generate`…) share the same embedded EBCDIC tables: `ibm-1047`, `cp037`, `cp1140`, `cp297`, `cp1147`, `cp500`, `cp1148`.
+
+### Gates and verdicts
+
+Many recent tasks (`assert`, `data-compare`, `job-assert`, `build-impact`, `zos-build`…) distinguish **"the check failed"** (the result is there, and it is bad) from **"the check could not run"** (technical breakage). That contract — and the `continueOnError` + `if:` idiom that goes with it — is explained once and for all in [Gates, verdicts and tests](../workflow-spec/gates-et-tests).

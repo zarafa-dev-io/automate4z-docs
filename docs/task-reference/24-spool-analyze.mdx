@@ -1,0 +1,146 @@
+---
+sidebar_position: 24
+title: spool-analyze
+---
+
+# `spool-analyze` — Transformer un spool en diagnostic structuré
+
+Transforme la sortie spool brute d'un job z/OS en **JSON structuré et exploitable** : steps avec leurs codes retour, abends, messages catalogués, datasets référencés, plus un **verdict synthétique**. C'est la tâche qui supprime l'étape « ouvrir SDSF et chercher » du diagnostic batch.
+
+## Le problème que ça résout
+
+Aucun orchestrateur généraliste ne sait lire un spool JES2. Le résultat : le pipeline dit « le job a fini », et un humain doit se connecter, retrouver le job, parcourir le JESYSMSG et interpréter `IEF142I` et `S0C7`. `spool-analyze` fait cette lecture à votre place et rend le résultat interrogeable par le workflow lui-même.
+
+Deux façons de lui donner le spool :
+
+```yaml
+steps:
+  # A. Rejeu hors-ligne : un fichier spool archivé, aucun mainframe requis.
+  #    Post-mortems, tests de non-régression du diagnostic, démos.
+  - id: analyze_offline
+    uses: spool-analyze
+    with:
+      source: spool/nightbat.txt
+      max_rc: 4
+
+  # B. Enchaîné à une soumission : la tâche va chercher le sysout via z/OSMF.
+  - id: submit
+    uses: zos-jobs
+    with: { jcl: jcl/nightbat.jcl, lpar: dev01 }
+  - id: analyze_live
+    uses: spool-analyze
+    with:
+      jobid: ${{ steps.submit.outputs.jobId }}
+      jobname: NIGHTBAT
+      lpar: dev01
+```
+
+Le **rejeu hors-ligne est un usage de premier rang**, pas un mode dégradé : la logique d'analyse est strictement la même dans les deux cas.
+
+## Entrées
+
+| Entrée | Type | Requis | Description |
+|--------|------|--------|-------------|
+| `source` | string | l'un des deux | Fichier spool local (sysout JES2 brut en texte UTF-8). Exclusif avec `jobid`. |
+| `jobid` | string | l'un des deux | Identifiant JES (typiquement `${{ steps.submit.outputs.jobId }}`) : la tâche récupère et concatène les sysout via z/OSMF. |
+| `jobname` | string | non | Nom du job pour l'endpoint z/OSMF ; recommandé avec `jobid`. |
+| `lpar` | string | non | Profil LPAR (même chaîne de résolution que `zos-jobs` ; jamais de credentials dans le YAML). |
+| `max_rc` | integer | non | Seuil de succès sur les condition codes (défaut `4`). Au-delà : verdict `warning`. |
+| `fail_on` | string | non | `abend` (défaut) : échec sur `abend`/`jcl-error`. `warning` : échec aussi sur `warning`. `never` : le step réussit toujours, le verdict reste dans les sorties. |
+| `knowledge_file` | string | non | YAML de connaissance site (local uniquement) ; prime sur la base embarquée. |
+| `rules` | array | non | Motifs RE2 nommés de détection applicative : `{pattern, severity, label}`. Compilés au chargement. |
+| `include_temp_datasets` | boolean | non | Inclure les datasets temporaires `&&` (défaut `false`). |
+
+## Le verdict (et ce qu'il déclenche)
+
+| Verdict | Condition | Sort du step (avec `fail_on: abend`, défaut) |
+|---------|-----------|-----------------------------------------------|
+| `success` | RC max ≤ `max_rc`, ni abend ni erreur JCL | passe |
+| `warning` | RC max > `max_rc`, ou un message de sévérité warning+ | passe (échoue avec `fail_on: warning`) |
+| `abend` | au moins un abend système ou utilisateur | échoue |
+| `jcl-error` | job non exécuté (JCL ERROR) | échoue |
+
+Point important pour les habitués du mainframe : **RC 4 est un succès par défaut** (`max_rc: 4`) — les compilateurs et utilitaires émettent régulièrement des RC 4 informatifs. Baissez `max_rc: 0` pour une politique stricte.
+
+## Les sorties : tout le rapport dans le contexte du workflow
+
+L'objet complet (`schema_version: 1`, contrat gelé) est injecté dans `steps.<id>.outputs`, prêt pour les conditions `if:` et [`job-assert`](job-assert) :
+
+```json
+{
+  "schema_version": 1,
+  "verdict": "warning",
+  "jobid": "JOB04231",
+  "jobname": "NIGHTBAT",
+  "maxRc": 8,
+  "steps": [
+    { "name": "EXTRACT", "program": "IEBGENER", "rc": 0, "executed": true },
+    { "name": "CHECK01", "program": "MYCHECK", "rc": 8, "executed": true },
+    { "name": "CLEANUP", "program": "IEFBR14", "executed": false }
+  ],
+  "abends": [],
+  "messages": [],
+  "datasets": [
+    { "dsn": "PROD.CUSTOMER.DATA", "disp": "SHR" }
+  ]
+}
+```
+
+Un step non exécuté (`IEF272I STEP WAS NOT EXECUTED`) apparaît avec `executed: false` et sans `rc`. `maxRc` est `null` quand aucun step n'a tourné (erreur JCL).
+
+## Abends : détectés, expliqués, jamais bloquants
+
+Les abends sont extraits des messages de fin (`SYSTEM=0C7` → `S0C7`, `USER=4038` → `U4038`), avec l'offset de l'instruction fautive quand un symptom dump le donne. Une **base de connaissance embarquée dans le binaire** (fonctionne en air-gap) joint un libellé court : `S0C7` → « Data exception — donnée non numérique dans une opération arithmétique ». Un code inconnu est détecté et exposé **sans** libellé — jamais bloquant.
+
+Enrichissez avec vos codes maison via `knowledge_file:` (fichier local, jamais téléchargé ; vos entrées priment) :
+
+```yaml
+# site-codes.yaml
+abends:
+  U0777: "Application paie : fichier d'entrée rejeté"
+messages:
+  MYAPP001E: { severity: error, label: "Rejets fichier paie" }
+```
+
+## Messages catalogués et règles maison
+
+Les messages des familles IEF (allocation/JCL), IGZ (runtime COBOL), DSN (DB2), CEE (Language Environment) et ICH (RACF) sont extraits avec leur step et leur sévérité (règle du suffixe IBM : `I` info, `W` warning, `E` error, `S` severe, `A` action). Un message warning+ bascule le verdict à `warning` même avec des RC propres.
+
+Pour la détection **applicative** (vos propres messages), `rules[]` — des motifs RE2 nommés, pas de mini-langage :
+
+```yaml
+      rules:
+        - pattern: '(PROD|TEST)\.CUSTOMER\.DATA'
+          severity: error
+          label: "Référence dataset clients"
+```
+
+RE2 = temps linéaire garanti : une règle ne peut jamais faire exploser l'analyse d'un gros spool. Un motif invalide est rejeté par `a4z lint` avant toute exécution.
+
+## Datasets référencés
+
+Chaque `DD` avec `DSN=` ressort dans `datasets[]` avec sa disposition en notation JCL (`"SHR"`, `"NEW/CATLG"`, `"OLD/DELETE"`), dans l'ordre de déclaration — un dataset temporaire consommé puis supprimé apparaît deux fois, c'est une information d'audit voulue. Les `SYSOUT=*`/`DUMMY` sont ignorés ; les temporaires `&&` sont exclus par défaut.
+
+## Composer : la gate standard
+
+`fail_on: never` + [`job-assert`](job-assert) est le duo recommandé dans un bloc `tests:` — l'analyse observe, l'assertion juge :
+
+```yaml
+  - id: analyze
+    uses: spool-analyze
+    with: { jobid: "${{ steps.submit.outputs.jobId }}", fail_on: never }
+
+  - id: job_ok
+    uses: job-assert
+    with:
+      analysis: ${{ steps.analyze.outputs }}
+      expect: { verdict: success, max_rc: 4 }
+```
+
+Un fichier sans aucun marqueur JES2 (téléchargement tronqué, mauvais fichier) est refusé avec une erreur technique explicite — jamais un « succès » vide.
+
+## Voir aussi
+
+- [`job-assert`](job-assert) — asserter sur ce rapport (verdict, RC par step, abends, messages).
+- [`zos-jobs`](zos-jobs) — la soumission dont on analyse la sortie.
+- [`test-report`](test-report) — le verdict rendu dans un rapport JUnit lisible par la CI.

@@ -7,6 +7,7 @@
     "message": "Workflow Specification",
     "description": "The label for category Spécification Workflow in sidebar tutorialSidebar"
   },
+<<<<<<< Updated upstream
   "sidebar.tutorialSidebar.category.Interface web (App opérateur)": {
     "message": "Web interface (Operator App)",
     "description": "The label for category Interface web (App opérateur) in sidebar tutorialSidebar"
@@ -14,5 +15,10 @@
   "sidebar.tutorialSidebar.category.Interface web (Studio)": {
     "message": "Web interface (Studio)",
     "description": "The label for category Interface web (Studio) in sidebar tutorialSidebar"
+=======
+  "sidebar.tutorialSidebar.category.Guides": {
+    "message": "Guides",
+    "description": "The label for category Guides in sidebar tutorialSidebar"
+>>>>>>> Stashed changes
   }
 }
