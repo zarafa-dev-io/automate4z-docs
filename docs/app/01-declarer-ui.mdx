@@ -58,7 +58,8 @@ steps:
 | `ui.name` | string | **Titre** de l'App (le nom du traitement). À défaut, le `name` du workflow. |
 | `ui.description` | string | Sous-titre affiché sous le titre. |
 | `ui.inputs` | objet | Présentation **par input** (voir ci-dessous). L'**ordre** des champs du formulaire suit l'ordre de déclaration ici. |
-| `ui.outputs` | objet | **Résultats** à exposer après exécution (voir plus bas). |
+| `ui.outputs` | objet | **Résultats** simples à exposer après exécution (voir plus bas). |
+| `ui.results` | objet | **Vue résultats composée** — verdict, KPIs, graphiques, tableaux paginés, téléchargements gouvernés : voir [La vue résultats](vue-resultats). |
 
 ---
 
@@ -194,6 +195,13 @@ réelle n'atteint jamais le navigateur de l'opérateur.
 
 À défaut de bloc `ui.outputs`, l'App expose **tous** les artefacts produits et
 **toutes** les sorties clé/valeur des steps (comportement par défaut raisonnable).
+
+:::tip Besoin de graphiques ?
+`ui.outputs` n'a pas de `kind: chart` — c'est voulu. Les **graphiques** (bar,
+line, pie), les KPIs et les tableaux triables appartiennent au bloc
+[`ui.results:`](vue-resultats), la vue résultats composée : des widgets résolus
+côté serveur, avec masquage PII et téléchargements gouvernés.
+:::
 
 ---
 
