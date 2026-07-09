@@ -1,5 +1,6 @@
 import type {ReactNode} from 'react';
 import clsx from 'clsx';
+import Link from '@docusaurus/Link';
 import Heading from '@theme/Heading';
 import Translate from '@docusaurus/Translate';
 import styles from './styles.module.css';
@@ -8,6 +9,7 @@ type FeatureItem = {
   title: ReactNode;
   icon: string;
   tint: string;
+  to: string;
   description: ReactNode;
 };
 
@@ -16,6 +18,7 @@ const FeatureList: FeatureItem[] = [
     title: <Translate id="homepage.feature.binary.title">Un binaire, deux mondes</Translate>,
     icon: '⚡',
     tint: styles.iconAmber,
+    to: '/docs/intro',
     description: (
       <Translate
         id="homepage.feature.binary.description"
@@ -28,6 +31,7 @@ const FeatureList: FeatureItem[] = [
     title: <Translate id="homepage.feature.declarative.title">Workflows déclaratifs</Translate>,
     icon: '📋',
     tint: styles.iconBlue,
+    to: '/docs/workflow-spec/structure',
     description: (
       <Translate
         id="homepage.feature.declarative.description"
@@ -45,6 +49,7 @@ const FeatureList: FeatureItem[] = [
     title: <Translate id="homepage.feature.tasks.title">30 tâches built-in</Translate>,
     icon: '🧰',
     tint: styles.iconViolet,
+    to: '/docs/task-reference/overview',
     description: (
       <Translate
         id="homepage.feature.tasks.description"
@@ -61,6 +66,7 @@ const FeatureList: FeatureItem[] = [
     title: <Translate id="homepage.feature.batchtests.title">Tests batch dans la CI</Translate>,
     icon: '🧪',
     tint: styles.iconGreen,
+    to: '/docs/guides/tester-un-batch',
     description: (
       <Translate
         id="homepage.feature.batchtests.description"
@@ -76,6 +82,7 @@ const FeatureList: FeatureItem[] = [
     title: <Translate id="homepage.feature.build.title">Build incrémental façon DBB</Translate>,
     icon: '🏗️',
     tint: styles.iconAmber,
+    to: '/docs/guides/build-and-test',
     description: (
       <Translate
         id="homepage.feature.build.description"
@@ -92,6 +99,7 @@ const FeatureList: FeatureItem[] = [
     title: <Translate id="homepage.feature.ai.title">IA sous gouvernance</Translate>,
     icon: '🤖',
     tint: styles.iconViolet,
+    to: '/docs/task-reference/ai-prompt',
     description: (
       <Translate
         id="homepage.feature.ai.description"
@@ -107,6 +115,7 @@ const FeatureList: FeatureItem[] = [
     title: <Translate id="homepage.feature.lint.title">Lint & Plan</Translate>,
     icon: '🔍',
     tint: styles.iconBlue,
+    to: '/docs/cli-reference',
     description: (
       <Translate
         id="homepage.feature.lint.description"
@@ -122,6 +131,7 @@ const FeatureList: FeatureItem[] = [
     title: <Translate id="homepage.feature.security.title">Sécurité native</Translate>,
     icon: '🔒',
     tint: styles.iconGreen,
+    to: '/docs/getting-started#secrets',
     description: (
       <Translate
         id="homepage.feature.security.description"
@@ -134,6 +144,7 @@ const FeatureList: FeatureItem[] = [
     title: <Translate id="homepage.feature.crossplatform.title">Cross-platform</Translate>,
     icon: '🌐',
     tint: styles.iconViolet,
+    to: '/docs/getting-started#installation',
     description: (
       <Translate
         id="homepage.feature.crossplatform.description"
@@ -144,14 +155,20 @@ const FeatureList: FeatureItem[] = [
   },
 ];
 
-function Feature({title, icon, tint, description}: FeatureItem) {
+function Feature({title, icon, tint, to, description}: FeatureItem) {
   return (
     <div className={clsx('col col--4')} style={{marginBottom: '1.5rem'}}>
-      <div className={styles.featureCard}>
-        <div className={clsx(styles.featureIcon, tint)}>{icon}</div>
-        <Heading as="h3">{title}</Heading>
-        <p>{description}</p>
-      </div>
+      <Link to={to} className={styles.featureCardLink}>
+        <div className={styles.featureCard}>
+          <div className={clsx(styles.featureIcon, tint)}>{icon}</div>
+          <Heading as="h3">{title}</Heading>
+          <p>{description}</p>
+          <span className={styles.featureMore}>
+            <Translate id="homepage.feature.learnMore">En savoir plus</Translate>
+            {' →'}
+          </span>
+        </div>
+      </Link>
     </div>
   );
 }
