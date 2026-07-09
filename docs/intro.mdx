@@ -30,6 +30,7 @@ automate4z résout ça avec un seul fichier YAML, un seul binaire, et une interf
 | **Exécution DAG** | Dépendances entre steps résolues automatiquement ; steps indépendants en parallèle |
 | **Expressions `$\{{ }}`** | Interpolation de contexte (inputs, outputs, env, runner) avec fonctions built-in |
 | **Profils z/OSMF** | Connexion aux LPARs via profils Zowe, trousseau OS ou variables d'env ; secrets jamais dans le YAML |
+| **IA sous gouvernance** | [`ai-prompt`](task-reference/ai-prompt) : un LLM explique un abend ou résume un listing — endpoints gouvernés par le profil, contexte anonymisé par construction, jamais décisionnaire |
 | **Studio & mode App** | `a4z serve` ouvre une interface web locale ([le Studio](studio/overview)) ; `a4z run --ui` ouvre une surface opérateur verrouillée par workflow |
 | **Plugins externes** | Tâches supplémentaires distribuées comme binaires `a4z-plugin-*`, découvertes dans des répertoires dédiés et verrouillables (`a4z plugins`) |
 | **Lint + Plan** | Valide un workflow et affiche le plan d'exécution sans l'exécuter |

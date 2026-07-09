@@ -90,5 +90,13 @@
   "homepage.license.link": {
     "message": "license (EULA)",
     "description": "Link text of the homepage license note"
+  },
+  "homepage.feature.ai.title": {
+    "message": "AI under governance",
+    "description": "Feature card title"
+  },
+  "homepage.feature.ai.description": {
+    "message": "The {aiprompt} task calls an LLM to explain an abend or summarize a listing — endpoints declared in the profile (never a URL or key in the YAML), {anonymized} context statically enforced on the DAG, and the AI stays consultative: it executes nothing, decides nothing.",
+    "description": "Feature card description"
   }
 }
