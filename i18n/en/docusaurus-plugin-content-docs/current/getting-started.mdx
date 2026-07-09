@@ -5,7 +5,7 @@ title: Getting started
 
 # Getting started
 
-> **v1.1.2** — all local and z/OS tasks are stable. Features marked **(v1.x)** or **(v2)** are planned but not yet available.
+> The **30 built-in tasks** (local, z/OS, mainframe data, batch testing, build) are stable — see [the catalogue](task-reference/overview). Features marked **(v2)** in the spec are planned but not yet available.
 
 ## Installation
 
@@ -144,7 +144,9 @@ outputs:                     # optional
 | `if` | no | Execution condition |
 | `env` | no | Step-specific env vars |
 | `timeout` | no | Max duration (e.g. `30s`, `5m`, `1h`) |
-| `continueOnError` | no | `true` to ignore step failure |
+| `continueOnError` | no | `true` to continue despite a step failure — the key to [the gate idiom](workflow-spec/gates-et-tests) |
+
+Beyond `steps:`, a workflow can also carry a [`tests:`](workflow-spec/gates-et-tests) block (batch test cases: setup / execute / assert) and a `ui:` block (the App mode operator surface).
 
 ---
 
@@ -228,7 +230,10 @@ Level 3:  publish
 
 ## Secrets
 
-Secrets are passed via environment variables prefixed with `A4Z_SECRET_`. Their values are masked (`***`) in logs.
+Two mechanisms, never a secret in the YAML:
+
+- **Environment variables** prefixed with `A4Z_SECRET_` — values are masked (`***`) in logs;
+- **OS keyring** via [`a4z secrets`](cli-reference#a4z-secrets) (`set` / `list` / `delete`) — referenced as `${secret:NAME}` in profiles.
 
 ```bash
 export A4Z_SECRET_API_TOKEN="ghp_xxxxx"
@@ -272,6 +277,31 @@ Each execution creates a directory under `.automate4z/runs/<runID>/`:
 :::tip
 Add `.automate4z/` to your `.gitignore` to avoid committing run artifacts.
 :::
+
+---
+
+## Exploring from the terminal
+
+The binary ships its own documentation — no need to leave the terminal:
+
+```bash
+a4z schema --list-tasks       # the 30 tasks, with category and summary
+a4z docs data-compare         # a task's documentation (inputs, outputs, examples)
+a4z schema --task zos-jobs    # a task's input JSON Schema
+a4z runs list                 # the workspace's run history
+```
+
+---
+
+## The web interface (Studio)
+
+Everything the CLI does can also be done in the browser:
+
+```bash
+a4z serve                     # opens the Studio on http://127.0.0.1:4500
+```
+
+The Studio edits workflows (forms or YAML), runs them, shows history and results — see the [Studio section](studio/overview). To hand a workflow to a non-developer operator, **App mode** (`a4z run <wf> --ui`) opens a locked surface limited to the inputs declared in the workflow's `ui:` block.
 
 ---
 
@@ -357,3 +387,15 @@ a4z lint ci-local.yml
 a4z plan ci-local.yml --input notify=true
 a4z run  ci-local.yml --input notify=true --parallelism 2
 ```
+
+---
+
+## Going further
+
+| You want to… | Read |
+|--------------|------|
+| Understand gates, verdicts and the `tests:` block | [Gates, verdicts and tests](workflow-spec/gates-et-tests) |
+| Set up a COBOL build pipeline without DBB | [Build and test](guides/build-and-test) |
+| Test a batch and see the result in Jenkins/GitLab | [Testing a batch](guides/tester-un-batch) |
+| Browse the 30 tasks | [Task reference](task-reference/overview) |
+| Work in the browser | [Web interface (Studio)](studio/overview) |
