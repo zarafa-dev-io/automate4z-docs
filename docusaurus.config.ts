@@ -50,14 +50,19 @@ const config: Config = {
   ],
 
   themeConfig: {
-    // Replace with your project's social card
-    image: 'img/docusaurus-social-card.jpg',
+    image: 'img/a4z-social-card.png',
     colorMode: {
       defaultMode: 'dark',
       respectPrefersColorScheme: true,
     },
     navbar: {
       title: 'automate4z',
+      logo: {
+        alt: 'automate4z',
+        src: 'img/logo-a.png',
+        width: 32,
+        height: 32,
+      },
       items: [
         {
           type: 'docSidebar',
