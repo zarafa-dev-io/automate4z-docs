@@ -3,6 +3,8 @@ import clsx from 'clsx';
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
+import ThemedImage from '@theme/ThemedImage';
+import useBaseUrl from '@docusaurus/useBaseUrl';
 import HomepageFeatures from '@site/src/components/HomepageFeatures';
 import Heading from '@theme/Heading';
 import Translate, {translate} from '@docusaurus/Translate';
@@ -43,7 +45,14 @@ function HomepageHeader() {
           <div className={styles.heroText}>
             <div className={styles.badge}>Open Source · Go · Mainframe DevOps</div>
             <Heading as="h1" className={styles.heroTitle}>
-              {siteConfig.title}
+              <ThemedImage
+                className={styles.heroWordmark}
+                alt={siteConfig.title}
+                sources={{
+                  light: useBaseUrl('/img/wordmark.png'),
+                  dark: useBaseUrl('/img/wordmark-dark.png'),
+                }}
+              />
             </Heading>
             <p className={styles.heroSubtitle}>
               {siteConfig.tagline}

@@ -56,9 +56,11 @@
   color: var(--a4z-ink);
 }
 
-.heroTitle em {
-  font-style: normal;
-  color: var(--a4z-amber);
+.heroWordmark {
+  display: block;
+  max-width: 420px;
+  width: 100%;
+  height: auto;
 }
 
 .heroSubtitle {
