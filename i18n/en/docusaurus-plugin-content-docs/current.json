@@ -18,5 +18,9 @@
   "sidebar.tutorialSidebar.category.Guides": {
     "message": "Guides",
     "description": "The label for category Guides in sidebar tutorialSidebar"
+  },
+  "sidebar.tutorialSidebar.category.Plugins externes": {
+    "message": "External plugins",
+    "description": "The label for category Plugins externes in sidebar tutorialSidebar"
   }
 }

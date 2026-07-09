@@ -253,29 +253,33 @@ Dans le workflow :
 
 ---
 
-## Artefacts de run
+## Historique des runs (SQLite)
 
-Chaque exécution crée un répertoire sous `.automate4z/runs/<runID>/` :
+`a4z` journalise chaque exécution dans une base **SQLite** locale :
 
 ```
-.automate4z/runs/
-└── 01HZ4K3Q2RXXXXXXXXXXXXX/
-    ├── workflow.yml
-    ├── inputs.yml
-    ├── run.json
-    └── steps/
-        ├── build/
-        │   ├── stdout.log
-        │   ├── stderr.log
-        │   └── outputs.json
-        └── test/
-            ├── stdout.log
-            ├── stderr.log
-            └── outputs.json
+<racine du dépôt Git>/.automate4z/runs.db
 ```
+
+- **Un emplacement prévisible par dépôt** : la base est ancrée à la racine du dépôt Git englobant (hors dépôt Git : le répertoire du workflow). Le CLI et le Studio partagent le même historique.
+- **Contenu** : les runs (statut, inputs résolus, durées, code de sortie), leurs steps (statuts, RC, raisons de skip), leurs outputs nommés et leurs lignes de log. **Les valeurs de secrets sont masquées avant écriture** — jamais stockées en clair.
+- **Aucun service externe** : driver SQLite en Go pur (pas de cgo), la base reste un simple fichier local mono-utilisateur.
+- **Rotation** : `--keep-runs` (défaut 50) borne l'historique conservé.
+
+Interroger l'historique — trois portes d'entrée :
+
+```bash
+a4z runs list                       # les runs, du plus récent au plus ancien
+a4z runs show 01HZ4K3Q2R…          # le détail d'un run : steps, RC, durées
+a4z run wf.yml --resume 01HZ4K…    # reprendre en sautant les steps déjà réussis
+```
+
+…ou l'onglet **Historique** du [Studio](studio/overview), qui lit la même base.
+
+Les **fichiers** produits par vos tâches (rapports NDJSON, listings, `junit.xml`…) restent des fichiers ordinaires aux chemins que vos workflows choisissent — la base ne stocke que le journal. Les artefacts d'exécution internes (sorties de plugins, notamment) vont sous `.automate4z/runs/<run-id>/<step-id>/`.
 
 :::tip
-Ajoutez `.automate4z/` à votre `.gitignore` pour ne pas committer les artefacts de run.
+Ajoutez `.automate4z/` à votre `.gitignore` : l'historique de runs est un état local, pas du code.
 :::
 
 ---
@@ -398,4 +402,5 @@ a4z run  ci-local.yml --input notify=true --parallelism 2
 | Monter un pipeline de build COBOL sans DBB | [Construire et tester](guides/build-and-test) |
 | Tester un batch et voir le résultat dans Jenkins/GitLab | [Tester un batch](guides/tester-un-batch) |
 | Parcourir les 30 tâches | [Référence des tâches](task-reference/overview) |
+| Ajouter vos propres tâches | [Créer un plugin externe](plugins/creer-un-plugin) |
 | Travailler dans le navigateur | [Interface web (Studio)](studio/overview) |

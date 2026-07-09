@@ -1,0 +1,289 @@
+---
+sidebar_position: 2
+title: Writing a plugin
+---
+
+# Writing an external plugin
+
+An a4z plugin is a **standalone executable, in any language**, that follows three conventions: a **name** (`a4z-plugin-<name>`), three **reserved subcommands**, and a **JSON-over-stdio protocol**. That's all — no library to link, no gRPC, no socket. If your language can read stdin and write stdout, it can be an a4z plugin.
+
+This guide builds a plugin step by step. An [official Go SDK](#the-go-sdk) reduces the code to pure business logic; the protocol remains the single normative reference, and the last section shows the same plugin in plain Python to prove it.
+
+## Overview: the contract in one figure
+
+```
+                    a4z                                   your binary
+                     │                                          │
+  discovery    ──────┼──  <bin> a4z-manifest  ────────────────▶ │  manifest JSON → stdout
+                     │                                          │
+  negotiation  ──────┼──  <bin> a4z-protocol  ────────────────▶ │  {"protocol_versions":[1]}
+                     │                                          │
+  execution    ──────┼──  <bin> a4z-run <task>  ──────────────▶ │
+                     │      JSON request ──▶ stdin              │
+                     │      stdout ◀── ONE JSON response        │
+                     │      stderr ◀── NDJSON events (logs, progress)
+                     │      exit code: 0 / 1 / 2 / 3            │
+```
+
+Three reserved subcommands every plugin must handle:
+
+| Command | Expected behaviour |
+|---------|--------------------|
+| `<bin> a4z-manifest` | Write the manifest JSON to stdout, exit 0. |
+| `<bin> a4z-run <task>` | Run the task: JSON request on stdin, JSON response on stdout, NDJSON events on stderr. |
+| `<bin> a4z-protocol` | Write `{"protocol_versions":[1]}` (version negotiation). |
+
+## Step 1 — The name
+
+The binary is named `a4z-plugin-<name>` (`.exe` tolerated on Windows): `a4z-plugin-sonar` exposes the logical plugin `sonar`. One binary = one plugin = **1 to n tasks**, each referenced in workflows as `uses: plugin/<task>`.
+
+## Step 2 — The manifest
+
+The manifest is the plugin's **identity card**: a4z obtains it via `a4z-manifest`, caches it, and uses it for everything — `with:` validation at lint time, documentation (`a4z docs plugin/<task>`), Studio forms, authorized secrets.
+
+```json
+{
+  "protocol_version": 1,
+  "name": "sonar",
+  "version": "1.0.0",
+  "summary": "SonarQube integration",
+  "tasks": [
+    {
+      "name": "sonar-scan",
+      "summary": "Run a SonarQube analysis and enforce the quality gate",
+      "description_markdown": "Runs `sonar-scanner` against the workspace…",
+      "input_schema": {
+        "type": "object",
+        "required": ["project_key"],
+        "properties": {
+          "project_key": { "type": "string", "description": "SonarQube project key" }
+        },
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": { "quality_gate": { "type": "string" } }
+      },
+      "secrets": [
+        { "name": "SONAR_TOKEN", "summary": "SonarQube API token", "required": true }
+      ],
+      "examples": [
+        { "title": "Basic scan", "yaml": "- uses: plugin/sonar-scan\n  with:\n    project_key: my-project" }
+      ],
+      "capabilities": { "dry_run": true }
+    }
+  ]
+}
+```
+
+Key points:
+
+- `input_schema` / `output_schema` are **JSON Schema Draft 2020-12** — the same dialect as native tasks. That is what gives your plugin's users validation at `a4z lint`, before any execution.
+- `secrets[]` is a **least-privilege** declaration: at run time the task receives those secrets and no others.
+- Unknown top-level fields are **rejected** — a malformed manifest is caught at discovery, not on the first run.
+
+## Step 3 — The request (stdin)
+
+At execution time, a4z launches `<bin> a4z-run <task>`, writes **one** JSON object to stdin, then **closes stdin** (that is the end-of-request signal):
+
+```json
+{
+  "protocol_version": 1,
+  "task": "sonar-scan",
+  "inputs": { "project_key": "my-project" },
+  "secrets": { "SONAR_TOKEN": "•••" },
+  "context": {
+    "workdir": "/path/project",
+    "workflow": "ci-cobol",
+    "step_id": "scan",
+    "run_id": "01HZ4K3Q2R…",
+    "dry_run": false,
+    "verbosity": "info",
+    "outputs_dir": "/path/.automate4z/runs/<run_id>/scan/"
+  }
+}
+```
+
+Security rules, carved into the protocol:
+
+- **Secrets travel only there** — never in argv, never in the environment. The plugin's process environment is a minimal allowlist (`PATH`, `HOME`, `TMPDIR`, locale).
+- **Produced files** go under `context.outputs_dir` and are referenced by relative path in the response — never base64 in the JSON.
+
+## Step 4 — The response (stdout) and events (stderr)
+
+**stdout is reserved for exactly one JSON response.** Any stray text before or after is a protocol violation (code 3).
+
+```json
+{
+  "protocol_version": 1,
+  "status": "success",
+  "outputs": { "quality_gate": "OK" },
+  "artifacts": [ { "path": "report.html", "content_type": "text/html" } ]
+}
+```
+
+On failure: `status: "failed"` + an `error` object `{ "code": "...", "message": "..." }`.
+
+For logs and progress **during** execution, stderr carries NDJSON — one JSON object per line, rendered live by the CLI and the Studio:
+
+```
+{"type":"log","level":"info","msg":"Analysing 142 files"}
+{"type":"progress","percent":40,"msg":"Uploading report"}
+```
+
+A non-JSON stderr line is tolerated (wrapped as a `warn` log) — your libraries writing to stderr break nothing.
+
+## Step 5 — The exit code (the authoritative verdict)
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | **Business failure** — assertion, quality gate, negative verdict |
+| `2` | **Technical error** — I/O, network, configuration |
+| `3` | Protocol violation — invalid JSON, unsupported version |
+
+You will recognize the [product's 0/1/2 contract](../workflow-spec/gates-et-tests): distinguishing 1 from 2 in your plugin lets its users tell "the quality gate failed" apart from "Sonar is unreachable". On a disagreement between the exit code and the response's `status`, **the exit code wins** and a4z logs the mismatch.
+
+## Step 6 — Dry-run and cancellation
+
+- **Dry-run**: if your task declares `capabilities.dry_run: true`, it receives `context.dry_run: true` during `a4z run --dry-run` and must describe what it *would* do, with no side effects. A task that does not declare it is simply **skipped** in dry-run — never invoked.
+- **Cancellation / timeout**: a4z sends SIGTERM to the process group, waits a grace period (10 s by default), then SIGKILL. Handle SIGTERM if you have cleanup to do, and answer `{"status":"cancelled"}`. (Documented Windows limitation: no reliable graceful signal, the process tree is terminated directly.)
+
+## The Go SDK
+
+The official SDK (`pluginsdk` package, standard library only) handles the whole protocol — request parsing, response, events, exit codes, manifest, signals. Only the business logic remains:
+
+```go
+package main
+
+import (
+	"fmt"
+
+	sdk "github.com/zarafa-dev-io/automate4z/pluginsdk"
+)
+
+func main() {
+	sdk.Plugin{
+		Name:    "hello",
+		Version: "1.0.0",
+		Summary: "Example plugin",
+		Tasks: []sdk.Task{{
+			Name:    "greet",
+			Summary: "Greets someone",
+			InputSchema: []byte(`{
+				"type": "object",
+				"required": ["name"],
+				"properties": { "name": { "type": "string" } }
+			}`),
+			Handler: func(c *sdk.Context, r sdk.Request) (sdk.Result, error) {
+				c.Logger().Info("greeting in progress")
+				name := fmt.Sprint(r.Inputs["name"])
+				if name == "" {
+					// BUSINESS failure (exit 1) — distinct from a technical error
+					return sdk.Result{}, sdk.Fail("empty_name", "name must not be empty")
+				}
+				return sdk.Result{
+					Outputs: map[string]any{"msg": "hi " + name},
+				}, nil
+			},
+		}},
+	}.Run()
+}
+```
+
+```bash
+go build -o ~/.a4z/plugins/a4z-plugin-hello .
+a4z plugins list                  # hello (1 task: greet)
+a4z docs plugin/greet             # the docs generated from your manifest
+```
+
+And in a workflow:
+
+```yaml
+steps:
+  - id: hello
+    uses: plugin/greet
+    with:
+      name: world
+  - id: show
+    run: echo "${{ steps.hello.outputs.msg }}"
+```
+
+Handler error convention: return `sdk.Fail(code, message)` for a **business failure** (exit 1); any other `error` is a **technical error** (exit 2).
+
+## Without the SDK: the same plugin in Python
+
+The protocol is the reference — here is a complete minimal plugin, zero dependencies:
+
+```python
+#!/usr/bin/env python3
+import json, sys
+
+MANIFEST = {
+    "protocol_version": 1,
+    "name": "hello-py", "version": "1.0.0",
+    "tasks": [{
+        "name": "greet-py",
+        "summary": "Greets someone (Python)",
+        "input_schema": {"type": "object", "required": ["name"],
+                         "properties": {"name": {"type": "string"}}},
+    }],
+}
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "a4z-manifest":
+        json.dump(MANIFEST, sys.stdout); return 0
+    if cmd == "a4z-protocol":
+        json.dump({"protocol_versions": [1]}, sys.stdout); return 0
+    if cmd == "a4z-run":
+        req = json.load(sys.stdin)                     # the request; stdin then closes
+        print(json.dumps({"type": "log", "level": "info",
+                          "msg": "greeting"}), file=sys.stderr)  # NDJSON event
+        name = req["inputs"].get("name", "")
+        if not name:                                   # business failure -> exit 1
+            json.dump({"protocol_version": 1, "status": "failed",
+                       "error": {"code": "empty_name", "message": "name must not be empty"}},
+                      sys.stdout)
+            return 1
+        json.dump({"protocol_version": 1, "status": "success",
+                   "outputs": {"msg": "hi " + name}}, sys.stdout)
+        return 0
+    return 3                                           # unknown subcommand
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+On Linux/macOS an executable wrapper named `a4z-plugin-hello-py` launching this script is enough; on Windows, package it as an `.exe` (PyInstaller) — the binary must be self-contained.
+
+## Testing and distributing
+
+```bash
+# Dev loop: the project directory takes precedence
+mkdir -p .a4z/plugins && go build -o .a4z/plugins/a4z-plugin-hello .
+a4z plugins refresh && a4z plugins list
+a4z lint wf.yml                    # validates with: against your input_schema
+a4z run wf.yml
+
+# Distribution
+a4z plugins install ./a4z-plugin-hello.tar.gz    # consumer side
+a4z plugins lock                                 # pin (SHA-256 fingerprints)
+a4z plugins verify                               # verify in CI
+```
+
+Release best practices: one **self-contained** binary per platform (a4z's single-binary model applies to plugins too), a semantic version in the manifest, and the lockfile committed on the consumer side.
+
+## Built-in or plugin? The partition criterion
+
+| Destination | Criterion |
+|-------------|-----------|
+| **Built-in** | Mainframe/z/OSMF primitives (shared client required), structuring tasks, anything expected "out of the box" |
+| **Plugin** | Third-party integrations (Sonar, internal tools), heavy dependencies (parquet, PDF…), experimental tasks |
+
+A plugin does **not** share the binary's z/OSMF client (sessions, authentication): a task that talks to z/OSMF belongs built-in.
+
+## See also
+
+- [Using plugins](utiliser-des-plugins) — discovery, installation, lockfile, secrets.
+- [Gates, verdicts and tests](../workflow-spec/gates-et-tests) — the 0/1/2 contract your exit codes extend.

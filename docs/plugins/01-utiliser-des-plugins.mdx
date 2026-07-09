@@ -1,0 +1,76 @@
+---
+sidebar_position: 1
+title: Utiliser des plugins
+---
+
+# Utiliser des plugins externes
+
+Les **30 tâches built-in** couvrent le cœur du produit, mais votre site a ses propres besoins : une intégration Sonar, un convertisseur maison, un notificateur interne. Les **plugins externes** ajoutent des tâches à a4z **sans recompiler le binaire** : un plugin est un exécutable autonome (`a4z-plugin-<nom>`), écrit dans n'importe quel langage, qui parle JSON avec a4z.
+
+Dans un workflow, une tâche plugin s'utilise **exactement comme une tâche native**, préfixée par `plugin/` :
+
+```yaml
+steps:
+  - id: scan
+    uses: plugin/sonar-scan
+    with:
+      project_key: mon-projet
+```
+
+`a4z lint` valide les `with:` contre le schéma déclaré par le plugin, `a4z docs plugin/sonar-scan` affiche sa documentation, le Studio propose ses tâches dans l'éditeur — l'intégration est complète.
+
+## Où a4z cherche les plugins (et où il ne cherche jamais)
+
+Les plugins sont découverts **uniquement** dans des répertoires dédiés :
+
+| Répertoire | Portée |
+|------------|--------|
+| `$A4Z_HOME/plugins/` (défaut `~/.a4z/plugins/`) | Utilisateur |
+| `.a4z/plugins/` | Projet (committable, prioritaire) |
+| `$A4Z_PLUGINS_DIRS` | Répertoires additionnels (séparateur de chemins de l'OS) |
+
+**Le `PATH` n'est jamais scanné.** C'est un choix de sécurité et de reproductibilité : la liste des binaires susceptibles d'être exécutés par un workflow est explicite et auditable.
+
+```bash
+a4z plugins list          # plugins découverts, leurs tâches, leur état
+a4z plugins docs sonar    # documentation des tâches d'un plugin
+```
+
+## Installer
+
+```bash
+a4z plugins install ./a4z-plugin-sonar           # binaire direct
+a4z plugins install ./a4z-plugin-sonar.tar.gz    # ou archive
+```
+
+L'installation copie le binaire dans le répertoire utilisateur, vérifie qu'il répond correctement (`a4z-manifest`) et met le cache de manifestes à jour. Après modification manuelle d'un répertoire de plugins, `a4z plugins refresh` reconstruit le cache.
+
+## Épingler : `lock` et `verify`
+
+En environnement contrôlé, on ne veut pas qu'un binaire de plugin puisse changer silencieusement. Le duo lockfile :
+
+```bash
+a4z plugins lock      # écrit .a4z/plugins.lock : nom, version, empreinte SHA-256
+a4z plugins verify    # compare les plugins découverts au lockfile
+```
+
+Le lockfile se committe avec le projet. Un plugin modifié, absent ou inconnu par rapport au lockfile est signalé — et refusé à l'exécution. C'est l'équivalent du `go.sum` pour vos tâches externes.
+
+## Secrets : moindre privilège
+
+Un plugin **déclare** dans son manifeste les secrets dont chaque tâche peut avoir besoin (par exemple `SONAR_TOKEN`). À l'exécution, a4z les résout depuis le **trousseau de l'OS** ([`a4z secrets`](../cli-reference#a4z-secrets)) et les transmet au plugin **uniquement sur stdin** — jamais en argument de ligne de commande, jamais en variable d'environnement, jamais en clair dans les logs (masquage automatique).
+
+```bash
+a4z secrets set SONAR_TOKEN     # une fois ; le plugin le recevra à chaque run
+```
+
+Un plugin ne reçoit **que** les secrets que sa tâche déclare — jamais l'ensemble du trousseau.
+
+## Ce qu'un plugin ne peut pas faire
+
+L'isolation est structurelle : un plugin tourne dans **son propre processus**, avec un environnement minimal (allowlist : `PATH`, `HOME`, `TMPDIR`, locale). Il n'a pas accès aux sessions z/OSMF du binaire, ni aux autres secrets, ni au contexte des autres steps. Ses échecs suivent le [contrat 0/1/2 du produit](../workflow-spec/gates-et-tests) — un plugin peut donc servir de gate comme n'importe quelle tâche native.
+
+## Voir aussi
+
+- [Créer un plugin](creer-un-plugin) — le guide complet, du manifeste au lockfile.
+- [`a4z plugins`](../cli-reference#a4z-plugins) — la référence des sous-commandes.

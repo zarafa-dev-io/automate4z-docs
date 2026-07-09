@@ -1,0 +1,10 @@
+{
+  "label": "Plugins externes",
+  "position": 8,
+  "collapsible": true,
+  "collapsed": false,
+  "link": {
+    "type": "generated-index",
+    "description": "Étendre a4z avec vos propres tâches : des binaires autonomes, dans n'importe quel langage, qui parlent JSON sur stdio."
+  }
+}
