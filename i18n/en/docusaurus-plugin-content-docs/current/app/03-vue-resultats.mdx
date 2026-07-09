@@ -1,0 +1,80 @@
+---
+sidebar_position: 4
+title: The results view (ui.results)
+---
+
+# The results view — `ui.results:` with charts
+
+`ui.outputs` exposes **simple** results (a value, a table, a file). To compose a **real results page** — verdict, key figures, **charts**, paginated tables, downloads — the workflow declares a **`ui.results:`** block: a list of **widgets**, rendered in declaration order after the run.
+
+```yaml
+ui:
+  results:
+    masking:
+      keys: [customer_name, iban]     # values masked (***) server-side
+    widgets:
+      - { type: verdict }
+      - { id: recs, type: kpi, label: Records,
+          value: "${{ steps.inspect.outputs.records }}" }
+      - { type: chart, chart: bar, title: Total per city,
+          source: "${{ steps.decode.outputs.output }}", x: city, y: total }
+      - { type: table, source: "${{ steps.decode.outputs.output }}",
+          columns: [{ key: id, label: Id }, { key: city }] }
+      - { type: download, label: Anonymized dataset,
+          artifact: "${{ steps.anonymize.outputs.output }}" }
+      - { type: text, content: Sample ready for your tests. }
+```
+
+Runnable example in the repository: `examples/mode-app-results/showcase.yml` (every widget over a 100% local data chain), plus the canonical demonstrator `examples/anonymize/constitute-test-dataset.yml`.
+
+## The 6 widgets
+
+Common fields: `id` (default `w<index>`), `type`, `title` (optional), `when` (a false condition **removes** the widget from the view — it is not rendered empty).
+
+| `type` | Required fields | Rendering |
+|--------|-----------------|-----------|
+| `verdict` | — (`value` defaults to the run status) | The run outcome, full width. |
+| `kpi` | `value` (+ optional `label`, `unit`) | One key figure; consecutive `kpi`s share a row. |
+| `chart` | `chart` (`bar` / `line` / `pie`), `source`, `x`, `y` | A **chart** over an NDJSON source: `x` and `y` are the plotted keys. |
+| `table` | `source`, `columns[]{key, label}` | A **paginated, sortable** table over an NDJSON source. |
+| `download` | `artifact` | A produced file's download — guarded by rule M3 (below). |
+| `text` | `content` | A free text block. |
+
+### Charts, concretely
+
+`source` points at a step output that is an **NDJSON file** (one JSON object per line) — the format [`record-decode`](../task-reference/record-codec), [`data-inspect`](../task-reference/data-inspect) or [`data-compare`](../task-reference/data-compare) naturally produce. `x` and `y` are two keys of those objects:
+
+```yaml
+      - type: chart
+        chart: pie                # bar | line | pie
+        title: Breakdown per branch
+        source: ${{ steps.decode.outputs.output }}
+        x: BRANCH                 # category key
+        y: TOTAL                  # value key (numeric)
+```
+
+Widgets perform **no aggregation**: computing belongs to the tasks (a step prepares the data, the widget shows it). Sources are streamed with a **5,000-row cap**; a capped widget carries `truncated: true` and the total actually loaded.
+
+## Server-side resolution — raw data never reaches the browser
+
+The Go binary **resolves** the view once the run finishes: interpolations are evaluated server-side (no expression and no file path ever reaches the browser), download files are exposed through **opaque, allowlisted ids**, and the resolved view is memoized per run (runs are immutable). A widget whose referenced step was skipped or failed comes out in the `unavailable` state with its reason — the rest of the view renders normally.
+
+## Governance: masking and rule M3
+
+- **`masking.keys`**: values under these keys are masked (`***`) **server-side, before any caching or transmission**. Declaring a masked key as a chart axis or a table column is **refused at load time** — the axis would expose exactly what the masking hides.
+- **Rule M3 (downloads)**: a `download` widget's `artifact` must come from a step whose DAG path includes an **anonymizing** step (`anonymizes: true`, or a task that anonymizes by construction such as [`pii-anonymize`](../task-reference/pii-anonymize)). A literal path with no provable provenance is refused: a download exposes a raw file, and only anonymized outputs may leave the binary.
+
+> Masking is **not** anonymization: it hides values in the view; the files themselves are governed by `pii-anonymize` and rule M3.
+
+## Load-time validation
+
+Like the whole `ui:` block, `ui.results:` is validated by `a4z lint` **before any execution**: unknown widget type (the error lists the admitted types), masked key used as an axis or column, `download` without anonymizing provenance — all rejected cold.
+
+## `ui.outputs` or `ui.results`?
+
+| Need | Block |
+|------|-------|
+| Expose a value, a preview, a file — no layout | [`ui.outputs`](declarer-ui) |
+| Compose a results page: verdict, KPIs, **charts**, sortable tables, governed downloads | `ui.results` |
+
+Both can coexist; for an operator-facing App, `ui.results` is the recommended presentation.

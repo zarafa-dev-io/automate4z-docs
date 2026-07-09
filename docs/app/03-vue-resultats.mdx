@@ -1,0 +1,80 @@
+---
+sidebar_position: 4
+title: La vue résultats (ui.results)
+---
+
+# La vue résultats — `ui.results:` avec graphiques
+
+`ui.outputs` expose des résultats **simples** (une valeur, un tableau, un fichier). Pour composer une **vraie page de résultats** — verdict, indicateurs chiffrés, **graphiques**, tableaux paginés, téléchargements — le workflow déclare un bloc **`ui.results:`** : une liste de **widgets**, rendus dans l'ordre de déclaration après le run.
+
+```yaml
+ui:
+  results:
+    masking:
+      keys: [customer_name, iban]     # valeurs masquées (***) côté serveur
+    widgets:
+      - { type: verdict }
+      - { id: recs, type: kpi, label: Enregistrements,
+          value: "${{ steps.inspect.outputs.records }}" }
+      - { type: chart, chart: bar, title: Total par ville,
+          source: "${{ steps.decode.outputs.output }}", x: city, y: total }
+      - { type: table, source: "${{ steps.decode.outputs.output }}",
+          columns: [{ key: id, label: Id }, { key: city }] }
+      - { type: download, label: Jeu anonymisé,
+          artifact: "${{ steps.anonymize.outputs.output }}" }
+      - { type: text, content: Échantillon prêt pour vos tests. }
+```
+
+Exemple exécutable dans le dépôt : `examples/mode-app-results/showcase.yml` (tous les widgets sur une chaîne de données 100 % locale), et le démonstrateur canonique `examples/anonymize/constitute-test-dataset.yml`.
+
+## Les 6 widgets
+
+Champs communs : `id` (défaut `w<index>`), `type`, `title` (optionnel), `when` (une condition fausse **retire** le widget de la vue — il n'est pas rendu vide).
+
+| `type` | Champs requis | Rendu |
+|--------|---------------|-------|
+| `verdict` | — (`value` par défaut : le statut du run) | L'issue du run, pleine largeur. |
+| `kpi` | `value` (+ `label`, `unit` optionnels) | Un chiffre clé ; les `kpi` consécutifs partagent une même rangée. |
+| `chart` | `chart` (`bar` / `line` / `pie`), `source`, `x`, `y` | Un **graphique** sur une source NDJSON : `x` et `y` sont les clés tracées. |
+| `table` | `source`, `columns[]{key, label}` | Un tableau **paginé et triable** sur une source NDJSON. |
+| `download` | `artifact` | Le téléchargement d'un fichier produit — gardé par la règle M3 (voir plus bas). |
+| `text` | `content` | Un bloc de texte libre. |
+
+### Les graphiques, concrètement
+
+`source` pointe une sortie de step qui est un **fichier NDJSON** (un objet JSON par ligne) — le format que produisent naturellement [`record-decode`](../task-reference/record-codec), [`data-inspect`](../task-reference/data-inspect) ou [`data-compare`](../task-reference/data-compare). `x` et `y` sont deux clés de ces objets :
+
+```yaml
+      - type: chart
+        chart: pie                # bar | line | pie
+        title: Répartition par agence
+        source: ${{ steps.decode.outputs.output }}
+        x: AGENCE                 # clé catégorie
+        y: TOTAL                  # clé valeur (numérique)
+```
+
+Les widgets ne font **aucune agrégation** : le calcul appartient aux tâches (un step prépare les données, le widget les montre). Les sources sont lues en flux avec un **plafond de 5 000 lignes** ; un widget plafonné porte `truncated: true` et le total réellement chargé.
+
+## Résolution côté serveur — jamais de données brutes au navigateur
+
+Le binaire Go **résout** la vue une fois le run terminé : interpolations évaluées côté serveur (aucune expression ni chemin de fichier n'atteint le navigateur), fichiers de téléchargement exposés via des **ids opaques** sur allowlist, et la vue résolue est mémorisée par run (les runs sont immuables). Un widget dont le step référencé a été sauté ou a échoué ressort en état `unavailable` avec sa raison — le reste de la vue se rend normalement.
+
+## Gouvernance : masquage et règle M3
+
+- **`masking.keys`** : les valeurs sous ces clés sont masquées (`***`) **côté serveur, avant tout cache ou transmission**. Déclarer une clé masquée comme axe de chart ou colonne de table est **refusé au chargement** — l'axe exposerait précisément ce que le masquage cache.
+- **Règle M3 (téléchargements)** : l'`artifact` d'un widget `download` doit provenir d'un step dont le chemin dans le DAG passe par un step **anonymisant** (`anonymizes: true`, ou une tâche anonymisante par construction comme [`pii-anonymize`](../task-reference/pii-anonymize)). Un chemin littéral sans provenance prouvable est refusé : un téléchargement expose un fichier brut, seule une sortie anonymisée peut quitter le binaire.
+
+> Le masquage n'est **pas** de l'anonymisation : il cache des valeurs dans la vue ; les fichiers eux-mêmes relèvent de `pii-anonymize` et de la règle M3.
+
+## Validation au chargement
+
+Comme tout le bloc `ui:`, `ui.results:` est validé par `a4z lint` **avant toute exécution** : type de widget inconnu (l'erreur liste les types admis), clé masquée utilisée en axe ou colonne, `download` sans provenance anonymisante — tout est rejeté à froid.
+
+## `ui.outputs` ou `ui.results` ?
+
+| Besoin | Bloc |
+|--------|------|
+| Exposer une valeur, un aperçu, un fichier — sans mise en page | [`ui.outputs`](declarer-ui) |
+| Composer une page de résultats : verdict, KPIs, **charts**, tableaux triables, téléchargements gouvernés | `ui.results` |
+
+Les deux peuvent coexister ; pour une App destinée à un opérateur, `ui.results` est la présentation recommandée.

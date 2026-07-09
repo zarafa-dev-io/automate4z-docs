@@ -57,7 +57,8 @@ steps:
 | `ui.name` | string | **Title** of the App (the job name). Defaults to the workflow `name`. |
 | `ui.description` | string | Subtitle shown under the title. |
 | `ui.inputs` | object | **Per-input** presentation (see below). The form field **order** follows the declaration order here. |
-| `ui.outputs` | object | **Results** to expose after the run (see below). |
+| `ui.outputs` | object | **Simple results** to expose after the run (see below). |
+| `ui.results` | object | **Composed results view** — verdict, KPIs, charts, paginated tables, governed downloads: see [The results view](vue-resultats). |
 
 ---
 
@@ -192,6 +193,13 @@ the operator's browser.
 
 When there is no `ui.outputs` block, the App exposes **all** produced artifacts
 and **all** key/value step outputs (a sensible default).
+
+:::tip Need charts?
+`ui.outputs` has no `kind: chart` — by design. **Charts** (bar, line, pie),
+KPIs and sortable tables belong to the [`ui.results:`](vue-resultats) block,
+the composed results view: server-resolved widgets, with PII masking and
+governed downloads.
+:::
 
 ---
 
