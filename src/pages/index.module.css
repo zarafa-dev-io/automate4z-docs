@@ -77,6 +77,13 @@
   flex-wrap: wrap;
 }
 
+.licenseNote {
+  margin-top: 1rem;
+  font-size: 0.82rem;
+  color: var(--a4z-muted);
+  max-width: 480px;
+}
+
 /* ─── Code window — a DS v5 card ─────────────────────────────────── */
 .heroCode {
   position: relative;

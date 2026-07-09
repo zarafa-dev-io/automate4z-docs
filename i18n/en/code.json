@@ -1,6 +1,6 @@
 {
   "homepage.meta.description": {
-    "message": "Open-source workflow orchestrator for z/OS mainframe and modern DevOps",
+    "message": "Workflow orchestrator for z/OS mainframe and modern DevOps",
     "description": "Homepage meta description"
   },
   "homepage.cta.start": {
@@ -82,5 +82,13 @@
   "homepage.feature.crossplatform.description": {
     "message": "Linux, macOS, Windows × amd64 / arm64. Run artifacts stored under {runs}. Automatic rotation. Machine-readable JSON output.",
     "description": "Feature card description"
+  },
+  "homepage.license.note": {
+    "message": "Proprietary software — use is governed by the {eula}. Your workflows and your data remain yours.",
+    "description": "License note under the homepage CTAs"
+  },
+  "homepage.license.link": {
+    "message": "license (EULA)",
+    "description": "Link text of the homepage license note"
   }
 }

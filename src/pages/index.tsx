@@ -43,7 +43,7 @@ function HomepageHeader() {
       <div className="container">
         <div className={styles.heroContent}>
           <div className={styles.heroText}>
-            <div className={styles.badge}>Open Source · Go · Mainframe DevOps</div>
+            <div className={styles.badge}>Go · Mainframe DevOps · Licence EULA</div>
             <Heading as="h1" className={styles.heroTitle}>
               <ThemedImage
                 className={styles.heroWordmark}
@@ -69,6 +69,13 @@ function HomepageHeader() {
                 <Translate id="homepage.cta.tasks">30 tâches built-in</Translate>
               </Link>
             </div>
+            <p className={styles.licenseNote}>
+              <Translate
+                id="homepage.license.note"
+                values={{eula: <Link to="/docs/licence"><Translate id="homepage.license.link">licence (EULA)</Translate></Link>}}>
+                {"Logiciel propriétaire — l'utilisation est régie par la {eula}. Vos workflows et vos données restent les vôtres."}
+              </Translate>
+            </p>
           </div>
 
           <div className={styles.heroCode}>
@@ -93,7 +100,7 @@ export default function Home(): ReactNode {
   return (
     <Layout
       title={siteConfig.title}
-      description={translate({id: 'homepage.meta.description', message: 'Orchestrateur de workflows open-source pour z/OS et DevOps modernes'})}>
+      description={translate({id: 'homepage.meta.description', message: 'Orchestrateur de workflows pour z/OS et DevOps modernes'})}>
       <HomepageHeader />
       <main>
         <HomepageFeatures />

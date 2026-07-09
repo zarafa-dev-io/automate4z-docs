@@ -104,10 +104,14 @@ const config: Config = {
               label: 'Issues',
               href: 'https://github.com/zarafa-dev-io/automate4z/issues',
             },
+            {
+              label: 'Licence (EULA)',
+              to: '/docs/licence',
+            },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} automate4z contributors. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} automate4z. Tous droits réservés — logiciel distribué sous licence EULA.`,
     },
     prism: {
       theme: prismThemes.github,
