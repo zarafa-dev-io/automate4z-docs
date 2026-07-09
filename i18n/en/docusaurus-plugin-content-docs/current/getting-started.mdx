@@ -253,29 +253,33 @@ In the workflow:
 
 ---
 
-## Run artifacts
+## Run history (SQLite)
 
-Each execution creates a directory under `.automate4z/runs/<runID>/`:
+`a4z` journals every execution to a local **SQLite** database:
 
 ```
-.automate4z/runs/
-└── 01HZ4K3Q2RXXXXXXXXXXXXX/
-    ├── workflow.yml
-    ├── inputs.yml
-    ├── run.json
-    └── steps/
-        ├── build/
-        │   ├── stdout.log
-        │   ├── stderr.log
-        │   └── outputs.json
-        └── test/
-            ├── stdout.log
-            ├── stderr.log
-            └── outputs.json
+<Git repository root>/.automate4z/runs.db
 ```
+
+- **One predictable location per repository**: the database is anchored at the enclosing Git repository's root (outside a Git repo: the workflow's directory). The CLI and the Studio share the same history.
+- **Content**: runs (status, resolved inputs, durations, exit code), their steps (statuses, RCs, skip reasons), their named outputs and their log lines. **Secret values are masked before writing** — never stored in clear.
+- **No external service**: pure-Go SQLite driver (no cgo), the database is a plain single-user local file.
+- **Rotation**: `--keep-runs` (default 50) bounds the retained history.
+
+Querying the history — three entry points:
+
+```bash
+a4z runs list                       # runs, most recent first
+a4z runs show 01HZ4K3Q2R…          # one run's detail: steps, RCs, durations
+a4z run wf.yml --resume 01HZ4K…    # resume, skipping already-succeeded steps
+```
+
+…or the **History** tab of the [Studio](studio/overview), which reads the same database.
+
+The **files** your tasks produce (NDJSON reports, listings, `junit.xml`…) remain ordinary files at the paths your workflows choose — the database only stores the journal. Internal execution artifacts (plugin outputs, notably) go under `.automate4z/runs/<run-id>/<step-id>/`.
 
 :::tip
-Add `.automate4z/` to your `.gitignore` to avoid committing run artifacts.
+Add `.automate4z/` to your `.gitignore`: the run history is local state, not code.
 :::
 
 ---
@@ -398,4 +402,5 @@ a4z run  ci-local.yml --input notify=true --parallelism 2
 | Set up a COBOL build pipeline without DBB | [Build and test](guides/build-and-test) |
 | Test a batch and see the result in Jenkins/GitLab | [Testing a batch](guides/tester-un-batch) |
 | Browse the 30 tasks | [Task reference](task-reference/overview) |
+| Add your own tasks | [Writing an external plugin](plugins/creer-un-plugin) |
 | Work in the browser | [Web interface (Studio)](studio/overview) |

@@ -1,0 +1,10 @@
+{
+  "label": "External plugins",
+  "position": 8,
+  "collapsible": true,
+  "collapsed": false,
+  "link": {
+    "type": "generated-index",
+    "description": "Extend a4z with your own tasks: standalone binaries, in any language, speaking JSON over stdio."
+  }
+}
