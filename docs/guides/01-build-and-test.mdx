@@ -1,0 +1,118 @@
+---
+sidebar_position: 1
+title: Construire et tester
+---
+
+# Construire et tester : un pipeline façon DBB, sans rien installer sur la LPAR
+
+IBM DBB répond bien à une question : *« un copybook a changé — que faut-il recompiler, dans quel ordre, et les compiles ont-elles réussi ? »* — au prix d'un runtime Groovy et d'un toolkit installés sur z/OS. a4z répond à la même question en **composant quatre tâches**, dont trois ne touchent jamais le mainframe et la quatrième ne parle que z/OSMF REST : **rien à installer sur la LPAR**.
+
+```
+source-scan ──▶ build-impact ──▶ zos-build (gaté) ──▶ verdict spool en tests
+   local            local          z/OSMF seul            local
+```
+
+Ce guide déroule le pipeline étape par étape. Un démonstrateur exécutable existe dans le dépôt : `examples/build-and-test.yml` — **100 % local par défaut** ; ajoutez `-i lpar=<profil>` pour compiler pour de vrai.
+
+## Étape 1 — `source-scan` : des sources au graphe, en local
+
+Un scan lexical ciblé de l'arbre de sources (`COPY` / `CALL` statique / `EXEC SQL INCLUDE` côté COBOL, `PGM=` / `INCLUDE MEMBER=` côté JCL) produit un graphe JSON **déterministe à l'octet près**, que vous pouvez committer et diffé en revue. Les copybooks sont des nœuds à part entière : les chaînes de `COPY` rendent l'impact transitif. Un appel dynamique (`CALL variable`, `PGM=&SYMBOLE`) est enregistré, **jamais deviné**.
+
+```yaml
+  - id: scan
+    uses: source-scan
+    with:
+      root: bld
+      layout:
+        cobol: src/cobol/**/*.cbl
+        copybook: src/copybook/**/*.cpy
+        jcl: src/jcl/**/*.jcl
+      output: output/depgraph.json
+```
+
+→ [Référence `source-scan`](../task-reference/source-scan)
+
+## Étape 2 — `build-impact` : que faut-il recompiler, dans quel ordre ?
+
+La fermeture transitive inverse du change set sur ce graphe. En CI, le change set est un diff Git (`from:`/`to:`) ; le démonstrateur le passe explicitement (`changed:`) pour être déterministe hors-ligne :
+
+```yaml
+  - id: impact
+    uses: build-impact
+    continueOnError: true
+    with:
+      graph: output/depgraph.json
+      root: bld
+      changed:
+        - src/copybook/CUSTREC.cpy
+      output: output/impact.json
+```
+
+Dans le démonstrateur, le copybook `CUSTREC` change, et l'analyse raconte l'histoire complète :
+
+```json
+{"path": "src/copybook/CUSTREC.cpy", "type": "copybook", "name": "CUSTREC"},
+{"path": "src/cobol/CUSTUPD.cbl",    "type": "cobol",    "name": "CUSTUPD",
+ "via": ["src/copybook/CUSTREC.cpy"]},
+{"path": "src/jcl/RUNJOB.jcl",       "type": "jcl",      "name": "RUNJOB",
+ "via": ["src/copybook/CUSTREC.cpy", "src/cobol/CUSTUPD.cbl"]}
+```
+
+`CUSTUPD` inclut le copybook : à recompiler. `SUBCALC` ne l'inclut pas : absent. Le JCL est impacté **pour la traçabilité**, mais seuls les programmes COBOL comptent en `buildable` — la gate porte sur ce compte. Chaque `via` est le chemin d'impact le plus court : le « pourquoi ce rebuild » d'une revue. Et les programmes sortent en **ordre topologique dépendances-d'abord** : un appelé se compile avant son appelant.
+
+→ [Référence `build-impact`](../task-reference/build-impact)
+
+## Étape 3 — `zos-build` : compiler via z/OSMF, sous double gate
+
+```yaml
+  - id: build
+    uses: zos-build
+    if: ${{ steps.impact.outputs.passed == false && inputs.lpar != "" }}
+    with:
+      impact: ${{ steps.impact.outputs.output }}
+      template: bld/templates/compile.jcl
+      vars: { srclib: "${{ inputs.hlq }}.BUILD.SRC", parm: "LIB,APOST" }
+      upload: { dataset: "${{ inputs.hlq }}.BUILD.SRC" }
+      lpar: ${{ inputs.lpar }}
+      output: output/build-report.json
+```
+
+La gate est **double** : il faut quelque chose à recompiler (`passed == false` — comparaison **booléenne**, voir [Gates, verdicts et tests](../workflow-spec/gates-et-tests)) *et* un profil LPAR fourni. Sans LPAR, le pipeline déroule quand même toute la chaîne de décision et saute le build — c'est ce qui rend le démonstrateur exécutable sur n'importe quel poste.
+
+Par artefact, `zos-build` rend le JCL de compile depuis un template (vos procs à vous, telles quelles), uploade la source en membre PDS, soumet, attend, **sauvegarde le listing** et en tire le verdict avec le moteur de `spool-analyze`. Un RC acceptable passe même avec des warnings ; abend, erreur JCL ou RC au-delà de `max_rc` échoue l'artefact.
+
+→ [Référence `zos-build`](../task-reference/zos-build)
+
+## Étape 4 — la jonction avec les tests : le verdict atterrit dans la CI
+
+Les listings de build sont du texte spool ordinaire — exactement ce que les tâches de test assertent. Le démonstrateur rejoue un listing archivé (le rejeu hors-ligne est un usage de premier rang de `spool-analyze`) et asserte `verdict: success` ; `test-report` replie le tout dans un `junit.xml` que n'importe quelle CI comprend :
+
+```yaml
+tests:
+  - id: compile_verdict
+    setup:
+      - id: analyze_listing
+        uses: spool-analyze
+        with: { source: tst/success.spool, maxRC: 4 }
+    assert:
+      - id: assert_compile
+        uses: job-assert
+        with:
+          analysis: ${{ steps.analyze_listing.outputs }}
+          expect: { verdict: success }
+
+steps:
+  - id: write_report
+    uses: test-report
+    with: { output: output/junit.xml, suite: build-and-test }
+```
+
+Face à une vraie LPAR, pointez `spool-analyze` sur les listings que `zos-build` a sauvegardés — la logique d'assertion est identique. Pas de tableau de bord mainframe à construire : **une compile échouée est un test échoué dans votre CI, avec le listing en pièce jointe.**
+
+## Où `z-deps` s'insère
+
+`source-scan` résout les dépendances **dans l'arbre scanné**. Ce que l'arbre ne contient pas — copybooks vendus, bibliothèques objets tierces — c'est le territoire de [`z-deps`](../task-reference/z-deps) : ses artefacts résolus sont des **nœuds feuilles** du graphe de build (consommés, jamais reconstruits). Une arête statique non résolue dans le graphe est souvent précisément une dépendance qui devrait être déclarée dans le manifeste `z-deps` ; `strict: true` sur `source-scan` transforme ce constat en gate qualité.
+
+## Limites honnêtes (v1)
+
+Les builds sont séquentiels (le graphe permettrait de paralléliser les compilations indépendantes — délibérément v2). Pas de bind DB2 (un step `zos-jobs` avec votre JCL fait l'affaire). `zos-build` est vérifié contre le serveur z/OSMF de test embarqué, avec de vraies fixtures spool ; la validation sur LPAR réelle est un suivi séparé.

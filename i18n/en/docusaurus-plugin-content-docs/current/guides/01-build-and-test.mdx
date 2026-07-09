@@ -1,0 +1,118 @@
+---
+sidebar_position: 1
+title: Build and test
+---
+
+# Build and test: a DBB-style pipeline with nothing installed on the LPAR
+
+IBM DBB answers one question well: *"a copybook changed — what must recompile, in what order, and did the compiles succeed?"* — at the price of a Groovy runtime and a toolkit installed on z/OS. a4z answers the same question by **composing four tasks**, three of which never touch the mainframe, and the fourth speaking only z/OSMF REST: **nothing to install on the LPAR**.
+
+```
+source-scan ──▶ build-impact ──▶ zos-build (gated) ──▶ spool verdict as tests
+   local            local          z/OSMF only              local
+```
+
+This guide walks the pipeline step by step. A runnable demonstrator lives in the repository: `examples/build-and-test.yml` — **100% local by default**; add `-i lpar=<profile>` to build for real.
+
+## Step 1 — `source-scan`: sources to graph, locally
+
+A targeted lexical scan of the source tree (`COPY` / static `CALL` / `EXEC SQL INCLUDE` on the COBOL side, `PGM=` / `INCLUDE MEMBER=` on the JCL side) produces a **byte-deterministic** JSON graph you can commit and diff in review. Copybooks are first-class nodes: `COPY` chains make impact transitive. A dynamic call (`CALL variable`, `PGM=&SYMBOL`) is recorded, **never guessed**.
+
+```yaml
+  - id: scan
+    uses: source-scan
+    with:
+      root: bld
+      layout:
+        cobol: src/cobol/**/*.cbl
+        copybook: src/copybook/**/*.cpy
+        jcl: src/jcl/**/*.jcl
+      output: output/depgraph.json
+```
+
+→ [`source-scan` reference](../task-reference/source-scan)
+
+## Step 2 — `build-impact`: what must recompile, in what order?
+
+The reverse transitive closure of the change set over that graph. In CI the change set is a Git diff (`from:`/`to:`); the demonstrator passes it explicitly (`changed:`) to stay deterministic offline:
+
+```yaml
+  - id: impact
+    uses: build-impact
+    continueOnError: true
+    with:
+      graph: output/depgraph.json
+      root: bld
+      changed:
+        - src/copybook/CUSTREC.cpy
+      output: output/impact.json
+```
+
+In the demonstrator, copybook `CUSTREC` changes, and the analysis tells the whole story:
+
+```json
+{"path": "src/copybook/CUSTREC.cpy", "type": "copybook", "name": "CUSTREC"},
+{"path": "src/cobol/CUSTUPD.cbl",    "type": "cobol",    "name": "CUSTUPD",
+ "via": ["src/copybook/CUSTREC.cpy"]},
+{"path": "src/jcl/RUNJOB.jcl",       "type": "jcl",      "name": "RUNJOB",
+ "via": ["src/copybook/CUSTREC.cpy", "src/cobol/CUSTUPD.cbl"]}
+```
+
+`CUSTUPD` includes the copybook: must recompile. `SUBCALC` does not: absent. The JCL is impacted **for traceability**, but only COBOL programs count as `buildable` — the gate rides on that count. Each `via` is the shortest impact chain: the "why this rebuild" of a review. And programs come out in **dependency-first topological order**: a callee compiles before its caller.
+
+→ [`build-impact` reference](../task-reference/build-impact)
+
+## Step 3 — `zos-build`: compile through z/OSMF, doubly gated
+
+```yaml
+  - id: build
+    uses: zos-build
+    if: ${{ steps.impact.outputs.passed == false && inputs.lpar != "" }}
+    with:
+      impact: ${{ steps.impact.outputs.output }}
+      template: bld/templates/compile.jcl
+      vars: { srclib: "${{ inputs.hlq }}.BUILD.SRC", parm: "LIB,APOST" }
+      upload: { dataset: "${{ inputs.hlq }}.BUILD.SRC" }
+      lpar: ${{ inputs.lpar }}
+      output: output/build-report.json
+```
+
+The gate is **double**: there must be something to rebuild (`passed == false` — a **boolean** comparison, see [Gates, verdicts and tests](../workflow-spec/gates-et-tests)) *and* an LPAR profile supplied. Without an LPAR, the pipeline still runs the whole decision chain and skips the build — which is what makes the demonstrator runnable on any workstation.
+
+Per artifact, `zos-build` renders the compile JCL from a template (your own procs, as-is), uploads the source as a PDS member, submits, waits, **saves the listing** and derives the verdict with the `spool-analyze` engine. An acceptable RC passes even with warnings; an abend, JCL error or RC beyond `max_rc` fails the artifact.
+
+→ [`zos-build` reference](../task-reference/zos-build)
+
+## Step 4 — the junction with testing: the verdict lands in CI
+
+Build listings are ordinary spool text — exactly what the testing tasks assert. The demonstrator replays an archived listing (offline replay is a first-class `spool-analyze` use case) and asserts `verdict: success`; `test-report` folds it all into a `junit.xml` any CI understands:
+
+```yaml
+tests:
+  - id: compile_verdict
+    setup:
+      - id: analyze_listing
+        uses: spool-analyze
+        with: { source: tst/success.spool, maxRC: 4 }
+    assert:
+      - id: assert_compile
+        uses: job-assert
+        with:
+          analysis: ${{ steps.analyze_listing.outputs }}
+          expect: { verdict: success }
+
+steps:
+  - id: write_report
+    uses: test-report
+    with: { output: output/junit.xml, suite: build-and-test }
+```
+
+Against a live LPAR, point `spool-analyze` at the listings `zos-build` saved — the assertion logic is identical. No mainframe dashboard to build: **a failed compile is a failed test in your CI, with the listing attached.**
+
+## Where `z-deps` fits
+
+`source-scan` resolves dependencies **within the scanned tree**. What the tree does not contain — vendored copybooks, third-party object libraries — is [`z-deps`](../task-reference/z-deps) territory: its resolved artifacts are **leaf nodes** of the build graph (consumed, never rebuilt). A statically unresolved edge in the graph is often precisely a dependency that should be declared in the `z-deps` manifest; `strict: true` on `source-scan` turns that observation into a quality gate.
+
+## Honest limits (v1)
+
+Builds run sequentially (the graph would allow parallelizing independent compiles — deliberately v2). No DB2 bind step (a `zos-jobs` step with your bind JCL does the job). `zos-build` is verified against the embedded z/OSMF test server, with real spool fixtures; live-LPAR validation is tracked separately.

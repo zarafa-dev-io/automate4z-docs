@@ -1,0 +1,117 @@
+---
+sidebar_position: 26
+title: test-report
+---
+
+# `test-report` — Vos tests batch dans la CI, comme des tests Java
+
+Agrège les verdicts des cas du [bloc `tests:`](../workflow-spec/gates-et-tests) du workflow en un rapport **JUnit XML** — le dialecte que Jenkins, GitLab et GitHub affichent nativement.
+
+## Le problème que ça résout
+
+Les tests batch mainframe vivent dans un **angle mort du pipeline** : le batch tourne, quelqu'un regarde le spool, et la CI n'en sait rien. Avec `test-report`, une suite de tests batch apparaît dans Jenkins ou GitLab **exactement comme une suite JUnit Java** : compteurs verts/rouges, détail par cas, tendance historique — sans aucun tableau de bord mainframe spécifique à construire ni maintenir.
+
+```yaml
+steps:
+  - id: report
+    uses: test-report
+    with:
+      output: out/junit.xml
+      suite: batch-tests        # optionnel ; défaut : l'id du run
+
+tests:
+  - id: interets
+    # setup / execute / assert …
+  - id: cloture_mensuelle
+    # …
+```
+
+Un step `test-report` sans `needs:` explicite est **automatiquement ordonnancé après tous les cas de test** (fan-in injecté au chargement) : il voit toujours la suite complète, sans rien câbler. L'utiliser dans un workflow sans bloc `tests:` est une erreur technique.
+
+## Entrées
+
+| Entrée | Type | Requis | Description |
+|--------|------|--------|-------------|
+| `output` | string | oui | Chemin du rapport, relatif au répertoire du workflow. |
+| `format` | string | non | `junit` (seule valeur en v1). |
+| `suite` | string | non | Nom de la suite (élément `testsuite` + classname des `testcase`) ; défaut : l'id du run. |
+
+## Sorties
+
+`output`, `cases`, `failures`, `errors`, `passed`.
+
+## `failed` vs `error` : la distinction qui compte
+
+Un `<testcase>` par cas, avec le temps d'exécution mesuré par le moteur. Le mapping des verdicts est strict sur le dialecte JUnit, parce que Jenkins et GitLab les affichent différemment :
+
+- **`failed`** (une assertion n'a pas tenu — le *programme* a un problème) → `<failure message="…">` avec le détail complet des assertions dans le corps ;
+- **`error`** (problème technique : fixture manquante, z/OSMF injoignable, cas stoppé par `fail_fast`) → `<error message="…">` — le *test* n'a pas pu conclure.
+
+Un rouge `failure` se corrige côté programme ; un rouge `error` se corrige côté test ou infrastructure. Cette lecture-là, votre CI la donne gratuitement.
+
+## Pièces jointes : le diff attaché au cas
+
+Tout step d'assertion dont les sorties portent un fichier `output` — le pivot de différences de [`data-compare`](data-compare), typiquement — voit ce chemin exposé en propriété du `<testcase>` :
+
+```xml
+<testcase name="settlement_totals" classname="batch-tests">
+  <failure message="2 records differ">…</failure>
+  <properties>
+    <property name="attachment" value="out/diff.ndjson"/>
+  </properties>
+</testcase>
+```
+
+C'est une **référence**, jamais du contenu embarqué : le rapport reste léger, le diff complet est à côté. Seule la pièce du **premier** step en échec est retenue par cas (même précédence « première cause » que le détail d'échec).
+
+## Recette : `data-compare` comme assertion de cas
+
+```yaml
+tests:
+  - id: settlement_totals
+    assert:
+      - id: compare_output
+        uses: data-compare
+        needs: [derive_layout, gen_baseline, gen_candidate]
+        continueOnError: true
+        with:
+          schema: layout.json
+          left: baseline.dat
+          right: candidate.dat
+          output: out/diff.ndjson    # attaché au cas si le step échoue
+```
+
+Deux idiomes à connaître (expliqués en détail dans [Gates, verdicts et tests](../workflow-spec/gates-et-tests)) :
+
+1. **`needs:` explicite sur les préparatifs partagés** : le premier step d'un cas est exempté de la dépendance séquentielle implicite (isolation des cas) — un layout ou des fixtures partagés doivent être nommés.
+2. **`continueOnError: true` sur le step d'assertion** : le fan-in automatique de `test-report` doit voir le step comme « satisfait » que le cas échoue ou non. Le **verdict du cas**, lui, est calculé sur le statut réel du step — `continueOnError` ne le masque pas.
+
+Une vraie différence de données donne le verdict `failed` (`<failure>`) ; une erreur `data-compare` quelconque (fichier manquant, layout invalide) donne `error` (`<error>`) — la convention 0/1/2 du produit, appliquée automatiquement.
+
+## Intégration CI
+
+```yaml
+# GitLab CI
+batch-tests:
+  script:
+    - a4z run workflows/batch-tests.yml
+  artifacts:
+    when: always
+    reports:
+      junit: out/junit.xml
+```
+
+```groovy
+// Jenkins (pipeline déclaratif)
+post {
+  always {
+    junit 'out/junit.xml'
+  }
+}
+```
+
+## Voir aussi
+
+- [Gates, verdicts et tests](../workflow-spec/gates-et-tests) — le bloc `tests:` et le contrat de verdicts.
+- [`job-assert`](job-assert) — l'assertion sur le résultat d'un job.
+- [`data-compare`](data-compare) — l'assertion sur un fichier de sortie.

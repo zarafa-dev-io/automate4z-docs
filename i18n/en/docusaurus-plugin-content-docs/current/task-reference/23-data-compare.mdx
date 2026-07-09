@@ -1,0 +1,126 @@
+---
+sidebar_position: 23
+title: data-compare
+---
+
+# `data-compare` — Compare two datasets on decoded values
+
+Diffs two raw z/OS sequential datasets **field by field, on decoded values** — never a binary diff — against a shared copybook layout. This is the building block of **batch non-regression**: "does the new version of the program produce the same file as the old one?"
+
+## Why not a plain binary diff?
+
+Because it lies in both directions. Two files can be **binarily different and functionally identical**: a packed field holding `+123` can be written with a sign nibble `C` or `F` — same value, different bytes. And a binary diff that finds a difference does not tell you **which field** changed — just a byte offset to recompute by hand.
+
+`data-compare` decodes both sides with the same engine as [`data-inspect`](data-inspect) and compares **the values**: two physical representations of the same value produce **no diff**; a real divergence is reported with the **field name**, both values, and the hex of both sides.
+
+## Example: non-regression
+
+```yaml
+steps:
+  - id: derive_layout
+    uses: copybook-schema
+    with: { input: order.cpy, output: order-layout.json }
+
+  - id: compare
+    uses: data-compare
+    with:
+      schema: order-layout.json
+      left: baseline.dat            # the reference (old version's output)
+      right: candidate.dat          # the file under test (new version)
+      output: diff.ndjson
+      encoding: cp037
+      ignore:
+        - "ORDER-DATE"              # volatile field, excluded from the verdict
+        - "-TIMESTAMP$"             # suffix pattern
+```
+
+## Inputs
+
+| Input | Type | Required | Description |
+|-------|------|----------|-------------|
+| `schema` | string | yes | `copybook-schema` layout JSON, shared by both files (a single copybook in v1). |
+| `left` | string | yes | Reference dataset (RECFM F/FB, raw binary stream). |
+| `right` | string | yes | Dataset under test. |
+| `output` | string | yes | Produced NDJSON diff pivot. |
+| `encoding` | string | no | Shared EBCDIC codepage: `cp1147` (default), `cp037`, `cp1140`, `cp297`, `cp500`, `cp1148`, `cp1047`. |
+| `ignore` | string[] | no | RE2 patterns matched against field dotted paths; compiled at load — an invalid pattern fails **before** any execution. |
+| `key` | string[] | no | Field dotted paths forming the matching key (simple or composite). Absent = positional matching. |
+| `maxDiffs` | integer | no | Cap on significant diffs before early stop (default `1000`; `0` = unlimited). |
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| `output` | Path of the diff pivot. |
+| `compared` | Record pairs compared. |
+| `modified` | Records with at least one significant field difference. |
+| `added` | Records present only on the right. |
+| `removed` | Records present only on the left. |
+| `truncated` | `true` when `maxDiffs` stopped the comparison. |
+| `passed` | `true` when `modified`, `added` and `removed` are all zero. |
+
+## The diff pivot
+
+A `meta` line, one `diff` line per divergent record (`kind`: `modified`, `added`, `removed`), a `summary` line with the counts and the per-field tally (`fieldsModified`). A `modified` lists **only the divergent fields**, decoded values + raw bytes of both sides:
+
+```json
+{"type":"diff","kind":"modified","index":42,"fields":[
+  {"path":"CUST-NAME","left":"ABE","right":"ZOE",
+   "raw":{"left":"C1C2C5404040","right":"E9D6C5404040"}}
+]}
+```
+
+## Two matching modes
+
+**Positional** (default): record #N on the left is compared to record #N on the right. Streaming, constant memory — the mode to prefer when both files are written in the same order. Excess records on the longer side come out as `added`/`removed`.
+
+**Key-based** (`key:`): records are paired by the decoded value of one or more fields — the fix when files are **not written in the same order**:
+
+```yaml
+      key: [CLIENT-REC.CLI-ID]           # simple key
+      # or composite:
+      key: [REC.AGENCY, REC.ACCOUNT]
+```
+
+A key present on only one side produces `added`/`removed` with the key in the diff line. **Duplicate keys are never silently resolved**: the same key twice on either side = immediate failure naming both positions. Beware: key mode indexes **the whole right file in memory** — for a very large file, pre-sort both files and use positional matching.
+
+## Excluding volatile fields (`ignore`)
+
+An honest batch writes timestamps, sequence numbers, run identifiers — fields that differ on every run without anything being broken. `ignore:` neutralizes them: a field whose path matches a pattern **never** produces a diff and **never** affects the verdict. A record whose only divergences are all ignored stays "compared", not "modified".
+
+Patterns are **RE2** (Go syntax, guaranteed linear time) matched against the field's dotted path — both `"ORDER-DATE"` (full name) and `"-TIMESTAMP$"` (suffix) work. An invalid pattern is rejected by `a4z lint` **before** any file is read.
+
+## Special cases
+
+- **`REDEFINES`**: a redefined zone is compared **once, on its raw bytes** — not once per view. The comparison cannot know which view is meaningful for a given record, and comparing every view would produce redundant diffs for the same physical bytes.
+- **Early stop (`maxDiffs`)**: the guard against the "wrong file compared" case, where *everything* differs. Reaching the cap is not an error: `truncated: true` in the output and pivot, and the step still fails on the differences already found.
+
+## Verdict and gate
+
+A significant difference **fails the step** — the desired behavior for a non-regression in CI. But the failure is **typed**: the pivot is always fully written first, and the outputs (`compared`/`modified`/`passed`…) stay available. To branch on the result within the workflow, the standard idiom:
+
+```yaml
+steps:
+  - id: diff
+    uses: data-compare
+    continueOnError: true
+    with: { schema: layout.json, left: baseline.dat, right: candidate.dat, output: diff.ndjson }
+
+  - id: gate
+    uses: assert
+    with:
+      condition: ${{ steps.diff.outputs.passed == true }}
+      message: "regression detected — see diff.ndjson"
+```
+
+See [Gates, verdicts and tests](../workflow-spec/gates-et-tests) for the general principle, and its role as an **assertion step** inside a `tests:` block (the diff pivot is then attached to the JUnit report — see [`test-report`](test-report)).
+
+## v1 scope
+
+RECFM F/FB, one shared copybook, fixed `OCCURS`. Out of scope: distinct left/right copybooks, numeric tolerances (epsilon), different codepages per side.
+
+## See also
+
+- [`testdata-generate`](testdata-generate) — produce the reference file deterministically.
+- [`data-inspect`](data-inspect) — the same decoding engine, read-only on one file.
+- [`test-report`](test-report) — the comparison as a JUnit test-case assertion.

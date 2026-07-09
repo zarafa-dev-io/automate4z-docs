@@ -11,25 +11,28 @@ import styles from './index.module.css';
 
 const WORKFLOW_YAML = `apiVersion: automate4z/v1
 kind: Workflow
-name: build-cobol
-
-inputs:
-  module:
-    type: string
-    required: true
+name: build-and-test
 
 steps:
-  - id: resolve
-    uses: z-deps
+  - id: scan
+    uses: source-scan
     with:
-      manifest: ./z-manifest.yaml
+      root: sources
+      output: build/graph.json
 
-  - id: compile
-    needs: [resolve]
-    uses: zos-jobs
+  - id: impact
+    uses: build-impact
+    continueOnError: true
     with:
-      jcl: ./jcl/compile.jcl
-      expectRC: 4`;
+      graph: build/graph.json
+      output: build/impact.json
+
+  - id: build
+    uses: zos-build
+    if: \${{ steps.impact.outputs.passed == false }}
+    with:
+      impact: \${{ steps.impact.outputs.output }}
+      template: jcl/compile.jcl`;
 
 function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
@@ -54,7 +57,7 @@ function HomepageHeader() {
               <Link
                 className="button button--outline button--secondary button--lg"
                 to="/docs/task-reference/overview">
-                <Translate id="homepage.cta.tasks">16 tâches built-in</Translate>
+                <Translate id="homepage.cta.tasks">30 tâches built-in</Translate>
               </Link>
             </div>
           </div>
@@ -62,10 +65,10 @@ function HomepageHeader() {
           <div className={styles.heroCode}>
             <div className={styles.codeWindow}>
               <div className={styles.codeWindowHeader}>
-                <span className={clsx(styles.dot, styles.dotRed)} />
-                <span className={clsx(styles.dot, styles.dotYellow)} />
-                <span className={clsx(styles.dot, styles.dotGreen)} />
-                <span className={styles.codeFile}>build-cobol.yml</span>
+                <span className={styles.dot} />
+                <span className={styles.dot} />
+                <span className={clsx(styles.dot, styles.dotAmber)} />
+                <span className={styles.codeFile}>build-and-test.yml</span>
               </div>
               <pre className={styles.codeContent}>{WORKFLOW_YAML}</pre>
             </div>

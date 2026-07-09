@@ -8,7 +8,7 @@
     "description": "Primary CTA button on homepage"
   },
   "homepage.cta.tasks": {
-    "message": "16 built-in tasks",
+    "message": "30 built-in tasks",
     "description": "Secondary CTA button on homepage"
   },
   "homepage.features.sectionLabel": {
@@ -36,11 +36,27 @@
     "description": "Feature card description"
   },
   "homepage.feature.tasks.title": {
-    "message": "16 built-in tasks",
+    "message": "30 built-in tasks",
     "description": "Feature card title"
   },
   "homepage.feature.tasks.description": {
-    "message": "Shell, HTTP, fs, archive, wait, notify, git, assert, json-query, yaml-query, template, convert, {zosjobs}, {zosdatasets}, {zdeps} — all included, no external dependencies.",
+    "message": "From shell to mainframe: {zosjobs}, datasets, copybooks, test datasets, {datacompare}, spool-analyze, {zosbuild}… — everything in the binary, no external dependencies.",
+    "description": "Feature card description"
+  },
+  "homepage.feature.batchtests.title": {
+    "message": "Batch tests in CI",
+    "description": "Feature card title"
+  },
+  "homepage.feature.batchtests.description": {
+    "message": "The {tests} block runs your jobs, analyzes their spools, compares their files field by field — and publishes a {junit} that Jenkins and GitLab render natively.",
+    "description": "Feature card description"
+  },
+  "homepage.feature.build.title": {
+    "message": "DBB-style incremental build",
+    "description": "Feature card title"
+  },
+  "homepage.feature.build.description": {
+    "message": "{sourcescan} maps your COBOL dependencies, {buildimpact} computes what to recompile from a Git diff, {zosbuild} compiles through z/OSMF — nothing to install on the LPAR.",
     "description": "Feature card description"
   },
   "homepage.feature.lint.title": {

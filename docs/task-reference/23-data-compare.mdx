@@ -1,0 +1,126 @@
+---
+sidebar_position: 23
+title: data-compare
+---
+
+# `data-compare` — Comparer deux datasets sur les valeurs décodées
+
+Compare deux datasets séquentiels z/OS bruts **champ par champ, sur les valeurs décodées** — jamais un diff binaire — à l'aide d'un copybook partagé. C'est la brique de la **non-régression batch** : « la nouvelle version du programme produit-elle le même fichier que l'ancienne ? »
+
+## Pourquoi pas un simple diff binaire ?
+
+Parce qu'il ment dans les deux sens. Deux fichiers peuvent être **binairement différents et fonctionnellement identiques** : un champ packed `+123` peut s'écrire avec un quartet de signe `C` ou `F` — même valeur, octets différents. Et un diff binaire qui détecte une différence ne vous dit pas **quel champ** a changé — juste un offset d'octet à recalculer à la main.
+
+`data-compare` décode les deux côtés avec le même moteur que [`data-inspect`](data-inspect) et compare **les valeurs** : deux représentations physiques de la même valeur ne produisent **aucune différence** ; une vraie divergence est rapportée avec le **nom du champ**, les deux valeurs, et l'hexadécimal des deux côtés.
+
+## Exemple : non-régression
+
+```yaml
+steps:
+  - id: derive_layout
+    uses: copybook-schema
+    with: { input: order.cpy, output: order-layout.json }
+
+  - id: compare
+    uses: data-compare
+    with:
+      schema: order-layout.json
+      left: baseline.dat            # la référence (sortie de l'ancienne version)
+      right: candidate.dat          # le fichier sous test (nouvelle version)
+      output: diff.ndjson
+      encoding: cp037
+      ignore:
+        - "ORDER-DATE"              # champ volatil, exclu du verdict
+        - "-TIMESTAMP$"             # motif suffixe
+```
+
+## Entrées
+
+| Entrée | Type | Requis | Description |
+|--------|------|--------|-------------|
+| `schema` | string | oui | Layout JSON `copybook-schema`, partagé par les deux fichiers (un seul copybook en v1). |
+| `left` | string | oui | Dataset de référence (RECFM F/FB, flux binaire brut). |
+| `right` | string | oui | Dataset sous test. |
+| `output` | string | oui | Pivot de différences NDJSON produit. |
+| `encoding` | string | non | Codepage EBCDIC commune : `cp1147` (défaut), `cp037`, `cp1140`, `cp297`, `cp500`, `cp1148`, `cp1047`. |
+| `ignore` | string[] | non | Motifs RE2 appliqués au chemin pointé des champs ; compilés au chargement — un motif invalide échoue **avant** toute exécution. |
+| `key` | string[] | non | Chemins de champs formant la clé d'appariement (simple ou composite). Absent = appariement positionnel. |
+| `maxDiffs` | integer | non | Plafond de différences significatives avant arrêt anticipé (défaut `1000` ; `0` = illimité). |
+
+## Sorties
+
+| Sortie | Description |
+|--------|-------------|
+| `output` | Chemin du pivot de différences. |
+| `compared` | Paires d'enregistrements comparées. |
+| `modified` | Enregistrements avec au moins une différence significative. |
+| `added` | Enregistrements présents seulement à droite. |
+| `removed` | Enregistrements présents seulement à gauche. |
+| `truncated` | `true` si `maxDiffs` a arrêté la comparaison. |
+| `passed` | `true` quand `modified`, `added` et `removed` valent tous zéro. |
+
+## Le pivot de différences
+
+Une ligne `meta`, une ligne `diff` par enregistrement divergent (`kind` : `modified`, `added`, `removed`), une ligne `summary` avec les compteurs et le palmarès par champ (`fieldsModified`). Un `modified` ne liste **que les champs divergents**, valeurs décodées + octets bruts des deux côtés :
+
+```json
+{"type":"diff","kind":"modified","index":42,"fields":[
+  {"path":"CUST-NAME","left":"ABE","right":"ZOE",
+   "raw":{"left":"C1C2C5404040","right":"E9D6C5404040"}}
+]}
+```
+
+## Deux modes d'appariement
+
+**Positionnel** (défaut) : l'enregistrement n°N de gauche est comparé au n°N de droite. Lecture en flux, mémoire constante — le mode à préférer quand les deux fichiers sont écrits dans le même ordre. Les enregistrements excédentaires du fichier le plus long ressortent en `added`/`removed`.
+
+**Par clé** (`key:`) : les enregistrements sont appariés par la valeur décodée d'un ou plusieurs champs — la solution quand les fichiers ne sont **pas écrits dans le même ordre** :
+
+```yaml
+      key: [CLIENT-REC.CLI-ID]           # clé simple
+      # ou composite :
+      key: [REC.AGENCE, REC.COMPTE]
+```
+
+Une clé présente d'un seul côté produit `added`/`removed` avec la clé dans la ligne de diff. **Les clés dupliquées ne sont jamais résolues silencieusement** : la même clé deux fois d'un côté = échec immédiat nommant les deux positions. Attention : le mode clé indexe **tout le fichier droit en mémoire** — pour un très gros fichier, pré-triez les deux fichiers et utilisez le mode positionnel.
+
+## Exclure les champs volatils (`ignore`)
+
+Un batch honnête écrit des horodatages, des numéros de séquence, des identifiants de run — des champs qui diffèrent à chaque exécution sans que rien ne soit cassé. `ignore:` les neutralise : un champ dont le chemin matche un motif ne produit **jamais** de différence et n'affecte **jamais** le verdict. Un enregistrement dont les seules divergences sont ignorées reste « comparé », pas « modifié ».
+
+Les motifs sont du **RE2** (syntaxe Go, temps linéaire garanti) appliqués au chemin pointé du champ — `"ORDER-DATE"` (nom complet) comme `"-TIMESTAMP$"` (suffixe) fonctionnent. Un motif invalide est rejeté par `a4z lint` **avant** toute lecture de fichier.
+
+## Cas particuliers
+
+- **`REDEFINES`** : une zone redéfinie est comparée **une fois, sur ses octets bruts** — pas une fois par vue. La comparaison ne sait pas quelle vue est pertinente pour un enregistrement donné, et comparer chaque vue produirait des diffs redondants pour les mêmes octets physiques.
+- **Arrêt anticipé (`maxDiffs`)** : le garde-fou du « mauvais fichier comparé », où *tout* diffère. Atteindre le plafond n'est pas une erreur : `truncated: true` dans la sortie et le pivot, et le step échoue sur les différences déjà trouvées.
+
+## Verdict et gate
+
+Une différence significative fait **échouer le step** — c'est le comportement voulu pour une non-régression en CI. Mais l'échec est **typé** : le pivot est toujours écrit intégralement d'abord, et les sorties (`compared`/`modified`/`passed`…) restent disponibles. Pour brancher sur le résultat dans le workflow, l'idiome standard :
+
+```yaml
+steps:
+  - id: diff
+    uses: data-compare
+    continueOnError: true
+    with: { schema: layout.json, left: baseline.dat, right: candidate.dat, output: diff.ndjson }
+
+  - id: gate
+    uses: assert
+    with:
+      condition: ${{ steps.diff.outputs.passed == true }}
+      message: "régression détectée — voir diff.ndjson"
+```
+
+Voir [Gates, verdicts et tests](../workflow-spec/gates-et-tests) pour le principe général, et son rôle de **step d'assertion** dans un bloc `tests:` (le pivot de diff est alors attaché au rapport JUnit — voir [`test-report`](test-report)).
+
+## Limites v1
+
+RECFM F/FB, un copybook partagé, `OCCURS` fixes. Hors périmètre : copybooks gauche/droite distincts, tolérances numériques (epsilon), codepages différentes de part et d'autre.
+
+## Voir aussi
+
+- [`testdata-generate`](testdata-generate) — produire le fichier de référence de façon déterministe.
+- [`data-inspect`](data-inspect) — le même moteur de décodage, en lecture seule sur un fichier.
+- [`test-report`](test-report) — la comparaison comme assertion d'un cas de test JUnit.

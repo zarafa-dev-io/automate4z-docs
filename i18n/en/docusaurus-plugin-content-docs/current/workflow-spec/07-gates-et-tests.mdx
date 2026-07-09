@@ -1,0 +1,132 @@
+---
+sidebar_position: 7
+title: Gates, verdicts and tests
+---
+
+# Gates, verdicts and tests
+
+This page explains **three ideas that come back everywhere** in a4z as soon as a workflow checks something: the difference between a check that fails and a check that could not run, the `continueOnError` + `if:` gate idiom, and the `tests:` block. Understand them once, and every checking task ([`assert`](../task-reference/assert), [`data-compare`](../task-reference/data-compare), [`job-assert`](../task-reference/job-assert), [`build-impact`](../task-reference/build-impact), [`zos-build`](../task-reference/zos-build)…) looks the same.
+
+## 1. Two ways to fail, and why it matters
+
+Take a file comparison. Two very different things can "go wrong":
+
+- **The check concluded, and the conclusion is bad**: the files differ. The program under test has a regression. That is a result — valuable, actionable, with a diff file to examine.
+- **The check could not conclude**: the reference file is missing, the layout is invalid. Whether the program has a regression is unknown — the *test* is broken, not (necessarily) the program.
+
+Mixing them up is the classic defect of home-grown scripts: a `diff` returning 1 — regression or missing file? a4z separates them **structurally**:
+
+| Family | Examples | Behavior |
+|--------|----------|----------|
+| **Check failure** ("exit 1") | data difference, unmet assertion, artifacts to rebuild, failed build | The step fails, **but** the result file is fully written and the outputs (`passed`, counters…) stay available for the rest of the workflow |
+| **Technical breakage** ("exit 2") | missing file, invalid layout, unreachable z/OSMF, invalid regex pattern | The step fails and produces **no partial result file** — an incomplete analysis can never be mistaken for a verdict |
+
+Mnemonic: **a check failure always leaves its diagnostic behind; a technical breakage never leaves a misleading half-result.**
+
+At the process level, `a4z run` stays deliberately simple: `0` everything succeeded, `1` at least one step failed, `2` the run could not even be attempted (invalid YAML, DAG cycle). The fine-grained distinction plays out *inside* the workflow, through the outputs — the subject of the next section.
+
+## 2. The gate idiom: `continueOnError` + `if:`
+
+How do you say "if the check detects something, then do this"? The standard pattern, in two beats:
+
+```yaml
+steps:
+  # 1. The check. It FAILS when it detects something — by design.
+  #    continueOnError keeps the workflow alive for what follows.
+  - id: impact
+    uses: build-impact
+    continueOnError: true
+    with:
+      graph: build/depgraph.json
+      output: build/impact.json
+
+  # 2. The reaction, conditioned on the check's `passed` output.
+  - id: build
+    uses: zos-build
+    if: ${{ steps.impact.outputs.passed == false }}
+    with:
+      impact: ${{ steps.impact.outputs.output }}
+      # …
+```
+
+Why does the check fail instead of just filling in `passed`? So the **simple case stays simple**: without `continueOnError` or `if:`, a `data-compare` finding a regression fails the run — exactly what you want from a non-regression check in CI, zero wiring. The gate is only needed when you want to *react* to the failure within the workflow.
+
+:::warning Trap #1: comparing to `"false"` instead of `false`
+`passed` is a **boolean**. `steps.impact.outputs.passed == false` works; `== "false"` (with quotes) compares to a **string** and is silently always false — the gated step never fires, with no error anywhere. If your gate "does nothing", check this first.
+:::
+
+A variant with [`assert`](../task-reference/assert) when the reaction is simply "fail with a good message":
+
+```yaml
+  - id: diff
+    uses: data-compare
+    continueOnError: true
+    with: { schema: layout.json, left: baseline.dat, right: candidate.dat, output: diff.ndjson }
+
+  - id: gate
+    uses: assert
+    with:
+      condition: ${{ steps.diff.outputs.passed == true }}
+      message: "regression detected — examine diff.ndjson"
+```
+
+## 3. The `tests:` block — readable test cases
+
+For test scenarios, hand-writing gate chains gets verbose fast. The `tests:` block structures it into **test cases** with three named phases:
+
+```yaml
+tests:
+  - id: monthly_interests
+    setup:                      # prepare: fixtures, layouts…
+      - id: fixtures
+        uses: testdata-generate
+        with: { copybook: account.cpy, data: fixtures/accounts.json, output: out/accounts.dat, encoding: ebcdic }
+    execute:                    # run: the batch under test
+      - id: run_batch
+        uses: zos-jobs
+        with: { jcl: jcl/interests.jcl, lpar: dev01 }
+      - id: analyze
+        uses: spool-analyze
+        with: { jobid: "${{ steps.run_batch.outputs.jobId }}", fail_on: never }
+    assert:                     # verify: the assertions
+      - id: job_ok
+        uses: job-assert
+        with:
+          analysis: ${{ steps.analyze.outputs }}
+          expect: { verdict: success, max_rc: 4 }
+
+steps:
+  - id: report
+    uses: test-report
+    with: { output: out/junit.xml, suite: batch-tests }
+```
+
+Under the hood, it is **syntactic sugar**: each case is desugared into ordinary steps at load time — one execution engine, and your YAML is never rewritten.
+
+### A case's verdict
+
+Each case comes out with one of three verdicts — you will recognize section 1's distinction:
+
+| Verdict | Meaning | In the JUnit report |
+|---------|---------|----------------------|
+| `passed` | Every assertion holds | green testcase |
+| `failed` | At least one failed assertion — **the program has a problem** | `<failure>` |
+| `error` | Technical breakage in a case step — **the test could not conclude** | `<error>` |
+
+### A suite's rules of life
+
+- **Sequential within a case**: as everywhere in a4z, a step without `needs` depends on the *case's* previous step.
+- **Isolation between cases**: a `failed` or `error` case **never** stops the other cases. A failed assertion does not interrupt the case's remaining assertions (exhaustive evaluation: you see everything in one pass).
+- **Shared prep**: a case's first step is exempt from the sequential dependency on whatever precedes it (that is the isolation) — a `steps:` step shared by several cases (a layout derived once, say) must therefore be referenced **explicitly** via `needs:`.
+- **The carrying workflow fails** as soon as any case is not `passed`; per-case verdicts are displayed at the end of the run.
+- `fail_fast: true` on a case: if it is not `passed`, the remaining cases come out as `error`.
+- Step ids remain **global** to the workflow: two cases cannot reuse the same id.
+
+### And CI sees everything
+
+[`test-report`](../task-reference/test-report) turns the verdicts into JUnit XML — the format Jenkins, GitLab and GitHub render natively. A `test-report` step without `needs:` is automatically scheduled after every case. The result: **your mainframe batch tests show up in CI like any Java test suite**, per-case detail and attachments (a failing `data-compare`'s NDJSON diff) included.
+
+## Going further
+
+- [Build and test](../guides/build-and-test) — a full pipeline using all these idioms.
+- [`spool-analyze`](../task-reference/spool-analyze), [`job-assert`](../task-reference/job-assert), [`data-compare`](../task-reference/data-compare) — the main checking tasks.

@@ -7,6 +7,7 @@ import styles from './styles.module.css';
 type FeatureItem = {
   title: ReactNode;
   icon: string;
+  tint: string;
   description: ReactNode;
 };
 
@@ -14,6 +15,7 @@ const FeatureList: FeatureItem[] = [
   {
     title: <Translate id="homepage.feature.binary.title">Un binaire, deux mondes</Translate>,
     icon: '⚡',
+    tint: styles.iconAmber,
     description: (
       <Translate
         id="homepage.feature.binary.description"
@@ -25,6 +27,7 @@ const FeatureList: FeatureItem[] = [
   {
     title: <Translate id="homepage.feature.declarative.title">Workflows déclaratifs</Translate>,
     icon: '📋',
+    tint: styles.iconBlue,
     description: (
       <Translate
         id="homepage.feature.declarative.description"
@@ -39,23 +42,56 @@ const FeatureList: FeatureItem[] = [
     ),
   },
   {
-    title: <Translate id="homepage.feature.tasks.title">16 tâches built-in</Translate>,
+    title: <Translate id="homepage.feature.tasks.title">30 tâches built-in</Translate>,
     icon: '🧰',
+    tint: styles.iconViolet,
     description: (
       <Translate
         id="homepage.feature.tasks.description"
         values={{
           zosjobs: <strong>zos-jobs</strong>,
-          zosdatasets: <strong>zos-datasets</strong>,
-          zdeps: <strong>z-deps</strong>,
+          datacompare: <strong>data-compare</strong>,
+          zosbuild: <strong>zos-build</strong>,
         }}>
-        {'Shell, HTTP, fs, archive, wait, notify, git, assert, json-query, yaml-query, template, convert, {zosjobs}, {zosdatasets}, {zdeps} — tout inclus, aucune dépendance externe.'}
+        {'Du shell au mainframe : {zosjobs}, datasets, copybooks, jeux d’essai, {datacompare}, spool-analyze, {zosbuild}… — tout inclus dans le binaire, aucune dépendance externe.'}
+      </Translate>
+    ),
+  },
+  {
+    title: <Translate id="homepage.feature.batchtests.title">Tests batch dans la CI</Translate>,
+    icon: '🧪',
+    tint: styles.iconGreen,
+    description: (
+      <Translate
+        id="homepage.feature.batchtests.description"
+        values={{
+          tests: <code>tests:</code>,
+          junit: <code>junit.xml</code>,
+        }}>
+        {'Le bloc {tests} exécute vos jobs, analyse leurs spools, compare leurs fichiers champ par champ — et publie un {junit} que Jenkins et GitLab affichent nativement.'}
+      </Translate>
+    ),
+  },
+  {
+    title: <Translate id="homepage.feature.build.title">Build incrémental façon DBB</Translate>,
+    icon: '🏗️',
+    tint: styles.iconAmber,
+    description: (
+      <Translate
+        id="homepage.feature.build.description"
+        values={{
+          sourcescan: <strong>source-scan</strong>,
+          buildimpact: <strong>build-impact</strong>,
+          zosbuild: <strong>zos-build</strong>,
+        }}>
+        {'{sourcescan} cartographie vos dépendances COBOL, {buildimpact} calcule quoi recompiler depuis un diff Git, {zosbuild} compile via z/OSMF — rien à installer sur la LPAR.'}
       </Translate>
     ),
   },
   {
     title: <Translate id="homepage.feature.lint.title">Lint & Plan</Translate>,
     icon: '🔍',
+    tint: styles.iconBlue,
     description: (
       <Translate
         id="homepage.feature.lint.description"
@@ -70,6 +106,7 @@ const FeatureList: FeatureItem[] = [
   {
     title: <Translate id="homepage.feature.security.title">Sécurité native</Translate>,
     icon: '🔒',
+    tint: styles.iconGreen,
     description: (
       <Translate
         id="homepage.feature.security.description"
@@ -81,6 +118,7 @@ const FeatureList: FeatureItem[] = [
   {
     title: <Translate id="homepage.feature.crossplatform.title">Cross-platform</Translate>,
     icon: '🌐',
+    tint: styles.iconViolet,
     description: (
       <Translate
         id="homepage.feature.crossplatform.description"
@@ -91,11 +129,11 @@ const FeatureList: FeatureItem[] = [
   },
 ];
 
-function Feature({title, icon, description}: FeatureItem) {
+function Feature({title, icon, tint, description}: FeatureItem) {
   return (
     <div className={clsx('col col--4')} style={{marginBottom: '1.5rem'}}>
       <div className={styles.featureCard}>
-        <div className={styles.featureIcon}>{icon}</div>
+        <div className={clsx(styles.featureIcon, tint)}>{icon}</div>
         <Heading as="h3">{title}</Heading>
         <p>{description}</p>
       </div>

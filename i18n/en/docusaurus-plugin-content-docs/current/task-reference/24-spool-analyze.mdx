@@ -1,0 +1,146 @@
+---
+sidebar_position: 24
+title: spool-analyze
+---
+
+# `spool-analyze` — Turn a spool into a structured diagnostic
+
+Turns raw z/OS spool output into **structured, actionable JSON**: steps with their return codes, abends, cataloged messages, referenced datasets, plus a **synthetic verdict**. This is the task that removes the "open SDSF and hunt" step from batch diagnostics.
+
+## The problem it solves
+
+No generalist orchestrator can read a JES2 spool. The result: the pipeline says "the job finished", and a human has to log on, find the job, walk the JESYSMSG and interpret `IEF142I` and `S0C7`. `spool-analyze` does that reading for you and makes the result queryable by the workflow itself.
+
+Two ways to feed it the spool:
+
+```yaml
+steps:
+  # A. Offline replay: an archived spool file, no mainframe required.
+  #    Post-mortems, diagnostic non-regression tests, demos.
+  - id: analyze_offline
+    uses: spool-analyze
+    with:
+      source: spool/nightbat.txt
+      max_rc: 4
+
+  # B. Chained to a submission: the task fetches the sysout via z/OSMF.
+  - id: submit
+    uses: zos-jobs
+    with: { jcl: jcl/nightbat.jcl, lpar: dev01 }
+  - id: analyze_live
+    uses: spool-analyze
+    with:
+      jobid: ${{ steps.submit.outputs.jobId }}
+      jobname: NIGHTBAT
+      lpar: dev01
+```
+
+**Offline replay is a first-class use case**, not a degraded mode: the analysis logic is strictly the same in both cases.
+
+## Inputs
+
+| Input | Type | Required | Description |
+|-------|------|----------|-------------|
+| `source` | string | one of | Local spool file (raw JES2 sysout as UTF-8 text). Mutually exclusive with `jobid`. |
+| `jobid` | string | one of | JES identifier (typically `${{ steps.submit.outputs.jobId }}`): the task fetches and concatenates the sysout via z/OSMF. |
+| `jobname` | string | no | Job name for the z/OSMF endpoint; recommended alongside `jobid`. |
+| `lpar` | string | no | LPAR profile (same resolution chain as `zos-jobs`; never credentials in the YAML). |
+| `max_rc` | integer | no | Success threshold on condition codes (default `4`). Beyond it: `warning` verdict. |
+| `fail_on` | string | no | `abend` (default): fails on `abend`/`jcl-error`. `warning`: also fails on `warning`. `never`: the step always succeeds, the verdict stays in the outputs. |
+| `knowledge_file` | string | no | Site knowledge YAML (local only); overrides the embedded base. |
+| `rules` | array | no | Named RE2 patterns for application-level detection: `{pattern, severity, label}`. Compiled at load. |
+| `include_temp_datasets` | boolean | no | Include `&&` temporary datasets (default `false`). |
+
+## The verdict (and what it triggers)
+
+| Verdict | Condition | Step outcome (with default `fail_on: abend`) |
+|---------|-----------|-----------------------------------------------|
+| `success` | max RC ≤ `max_rc`, no abend, no JCL error | passes |
+| `warning` | max RC > `max_rc`, or a warning-or-above message | passes (fails with `fail_on: warning`) |
+| `abend` | at least one system or user abend | fails |
+| `jcl-error` | job not run (JCL ERROR) | fails |
+
+Important for mainframe veterans: **RC 4 is a success by default** (`max_rc: 4`) — compilers and utilities routinely emit informational RC 4s. Lower to `max_rc: 0` for a strict policy.
+
+## The outputs: the whole report in the workflow context
+
+The complete object (`schema_version: 1`, frozen contract) is injected into `steps.<id>.outputs`, ready for `if:` conditions and [`job-assert`](job-assert):
+
+```json
+{
+  "schema_version": 1,
+  "verdict": "warning",
+  "jobid": "JOB04231",
+  "jobname": "NIGHTBAT",
+  "maxRc": 8,
+  "steps": [
+    { "name": "EXTRACT", "program": "IEBGENER", "rc": 0, "executed": true },
+    { "name": "CHECK01", "program": "MYCHECK", "rc": 8, "executed": true },
+    { "name": "CLEANUP", "program": "IEFBR14", "executed": false }
+  ],
+  "abends": [],
+  "messages": [],
+  "datasets": [
+    { "dsn": "PROD.CUSTOMER.DATA", "disp": "SHR" }
+  ]
+}
+```
+
+A flushed step (`IEF272I STEP WAS NOT EXECUTED`) appears with `executed: false` and no `rc`. `maxRc` is `null` when no step ran (JCL error).
+
+## Abends: detected, explained, never blocking
+
+Abends are extracted from completion messages (`SYSTEM=0C7` → `S0C7`, `USER=4038` → `U4038`), with the failing offset when a symptom dump reports one. A **knowledge base embedded in the binary** (works air-gapped) joins a short label: `S0C7` → "Data exception — non-numeric data in an arithmetic operation". An unknown code is detected and exposed **without** a label — never blocking.
+
+Enrich with your site codes via `knowledge_file:` (local file, never downloaded; your entries win):
+
+```yaml
+# site-codes.yaml
+abends:
+  U0777: "Payroll application: input file rejected"
+messages:
+  MYAPP001E: { severity: error, label: "Payroll rejects file" }
+```
+
+## Cataloged messages and custom rules
+
+Messages of the IEF (allocation/JCL), IGZ (COBOL runtime), DSN (DB2), CEE (Language Environment) and ICH (RACF) families are extracted with their step and severity (IBM suffix rule: `I` info, `W` warning, `E` error, `S` severe, `A` action). A warning-or-above message turns the verdict to `warning` even with clean RCs.
+
+For **application-level** detection (your own messages), `rules[]` — named RE2 patterns, no mini-language:
+
+```yaml
+      rules:
+        - pattern: '(PROD|TEST)\.CUSTOMER\.DATA'
+          severity: error
+          label: "Customer dataset reference"
+```
+
+RE2 = guaranteed linear time: a rule can never blow up the analysis of a large spool. An invalid pattern is rejected by `a4z lint` before any execution.
+
+## Referenced datasets
+
+Every `DD` with `DSN=` lands in `datasets[]` with its disposition in JCL shorthand (`"SHR"`, `"NEW/CATLG"`, `"OLD/DELETE"`), in declaration order — a temporary dataset consumed then deleted appears twice, which is deliberate audit information. `SYSOUT=*`/`DUMMY` are skipped; `&&` temporaries are excluded by default.
+
+## Composing: the standard gate
+
+`fail_on: never` + [`job-assert`](job-assert) is the recommended pair inside a `tests:` block — the analysis observes, the assertion judges:
+
+```yaml
+  - id: analyze
+    uses: spool-analyze
+    with: { jobid: "${{ steps.submit.outputs.jobId }}", fail_on: never }
+
+  - id: job_ok
+    uses: job-assert
+    with:
+      analysis: ${{ steps.analyze.outputs }}
+      expect: { verdict: success, max_rc: 4 }
+```
+
+A file with no JES2 marker at all (truncated download, wrong file) is refused with an explicit technical error — never an empty "success".
+
+## See also
+
+- [`job-assert`](job-assert) — assert on this report (verdict, per-step RC, abends, messages).
+- [`zos-jobs`](zos-jobs) — the submission whose output gets analyzed.
+- [`test-report`](test-report) — the verdict rendered as a CI-readable JUnit report.

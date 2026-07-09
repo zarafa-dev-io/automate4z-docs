@@ -1,0 +1,130 @@
+---
+sidebar_position: 21
+title: testdata-generate
+---
+
+# `testdata-generate` — Generate a test file from a copybook
+
+Turns a **JSON** data file (easy to write, review, and version in Git) into a **sequential file conforming to a COBOL copybook layout** (the format your batch program actually expects: fixed lengths, packed decimal, zoned, EBCDIC…).
+
+## The problem it solves
+
+Building a test dataset for a COBOL batch today usually means copying a production file (forbidden or risky), or typing records by hand in hexadecimal under ISPF (slow, unreadable, impossible to review). 
+
+`testdata-generate` flips the logic: **you describe your records in readable JSON, the task produces the exact bytes**. The JSON reads, diffs and versions well — the binary file is regenerated on demand.
+
+Test-dataset constitution is a 3-step process:
+
+1. **copybook → schema**: [`copybook-schema`](copybook-schema) reads the copybook and produces the physical layout (and, optionally, a JSON Schema projection that guides the typing — or a generative AI);
+2. **schema → JSON data**: a human (or an AI) writes the records;
+3. **JSON → sequential file**: this task.
+
+:::tip Deterministic by construction
+`testdata-generate` **generates no value**: it is a serializer. Same copybook + same JSON = **byte-identical** file, on every run, on every platform. This is what makes test datasets reproducible and comparisons ([`data-compare`](data-compare)) reliable.
+:::
+
+## Quick example
+
+```yaml
+steps:
+  - id: generate
+    uses: testdata-generate
+    with:
+      copybook: copybooks/CUSTOMER.cpy       # the input layout
+      search_paths: [copybooks/]             # where to resolve nested COPY
+      data: data/customer.data.json          # your records, in JSON
+      output: build/CUSTOMER.testdata        # the produced sequential file
+      encoding: utf-8                        # or ebcdic (see below)
+      manifest: build/CUSTOMER.manifest.json # traceability (optional)
+```
+
+The JSON data file: an object with a `records` array, field names are the COBOL names:
+
+```json
+{
+  "records": [
+    {
+      "CUST-ID": 100042,
+      "CUST-NAME": "MARTIN DUPONT",
+      "CUST-BALANCE": 1523.75
+    },
+    {
+      "CUST-ID": 100043,
+      "CUST-NAME": "ANNA SCHMIDT"
+    }
+  ]
+}
+```
+
+An absent field takes the copybook `VALUE` default if there is one, else spaces (alphanumeric) or zero (numeric). `OCCURS` tables are JSON arrays with the exact cardinality.
+
+## Inputs
+
+| Input | Type | Required | Description |
+|-------|------|----------|-------------|
+| `copybook` | string | yes | Entry copybook (same `search_paths`/`replacing` semantics as `copybook-schema`). |
+| `search_paths` | string[] | no | Directories searched to resolve nested `COPY`. |
+| `replacing` | object[] | no | Top-level `REPLACING` rules (`from`, `to`, `word`, `leading`, `trailing`). |
+| `data` | string | yes | JSON data file: `{"records": [ ... ]}`. |
+| `output` | string | yes | Produced sequential file. |
+| `encoding` | string | no | `utf-8` (default) or `ebcdic`. |
+| `codepage` | string | no | EBCDIC table: `ibm-1047` (default), `cp037`, `cp1140`, `cp297`, `cp1147`, `cp500`, `cp1148`. |
+| `manifest` | string | no | Write the serialization manifest to this path. |
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| `output` | Path of the produced file. |
+| `records` | Number of records serialized. |
+| `encoding` | Effective encoding. |
+| `uploadMode` | The matching z/OSMF upload instruction: `text` or `binary`. |
+| `manifest` | Manifest path (when requested). |
+
+## Encoding: the classic trap, settled simply
+
+This is THE classic mainframe transfer pitfall. The rule the task applies:
+
+| Your layout | `encoding` | Produced file | z/OSMF upload |
+|-------------|-----------|---------------|----------------|
+| 100% character (`PIC X`, zoned, `SIGN SEPARATE`) | `utf-8` (default) | One record per line, UTF-8 | **text** mode — the host converts to EBCDIC and pads to the RECFM |
+| Contains `COMP` / `COMP-3` | `ebcdic` | Exact binary image: characters in the target code page, packed/binary raw, fixed-length concatenated records | **binary** mode onto a `RECFM=FB, LRECL=totalLength` dataset |
+
+Why this rule? A `COMP-3` (packed decimal) field contains bytes that **are not text**. If z/OSMF converts them as text, they are destroyed. The task protects you: asking for `utf-8` on a mixed layout **fails pedagogically** with a message spelling out the correction (`encoding: ebcdic` + binary upload) — rather than silently producing a corrupted file.
+
+The `uploadMode` output tells you exactly which mode to pass to [`zos-datasets`](zos-datasets) downstream:
+
+```yaml
+  - id: upload
+    uses: zos-datasets
+    with:
+      action: upload
+      localPath: ${{ steps.generate.outputs.output }}
+      dataset: ${{ inputs.hlq }}.TEST.DATA
+      mode: ${{ steps.generate.outputs.uploadMode }}
+```
+
+## Exhaustive validation
+
+The task validates the JSON against the layout **before** writing anything, and reports **every** problem in one failure, each with its exact JSON path:
+
+```
+records[3].ORDER-LINE[1].LINE-QTY: value 100000 exceeds PIC 9(4) bounds
+records[7].CUST-NAME: 45 characters exceed PIC X(30) — no silent truncation
+```
+
+Numerics are checked in **exact decimal** (bounds, scale, never a rounding); strings are **never silently truncated**. `FILLER` and redefining views are not addressable. Level-88 condition names close the field's value domain.
+
+## The manifest
+
+A JSON traceability document (`manifest_version: 1`): copybook, applied `replacing` rules, record count, `totalLength`, encoding/codepage, expected upload mode, and the **SHA-256 of the produced file**. Volatile facts (`generatedAt`, tool version) are isolated under `meta` — two runs with identical inputs yield manifests byte-identical outside `meta`. Ideal for proving in an audit that a test dataset matches its JSON source.
+
+## v1 limits (refused with a precise diagnostic)
+
+`OCCURS DEPENDING ON`, `COMP-1`/`COMP-2` (floating point), edited pictures, a redefining view longer than its base, control characters in values.
+
+## See also
+
+- [`copybook-schema`](copybook-schema) — step 1: derive the layout from the copybook.
+- [`data-inspect`](data-inspect) — re-read the produced file field by field (the visual check).
+- [`data-compare`](data-compare) — compare a batch output against a reference file generated here.

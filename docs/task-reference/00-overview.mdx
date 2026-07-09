@@ -5,7 +5,7 @@ title: Vue d'ensemble
 
 # Tâches built-in
 
-automate4z embarque **21 tâches built-in** dans le binaire `a4z`, toutes **Stable**.
+automate4z embarque **30 tâches built-in** dans le binaire `a4z`. Elles se composent librement dans un même workflow — c'est même la philosophie du produit : chaque tâche fait une chose, et les scénarios riches (tester un batch, builder à l'impact) sont des **compositions** documentées, pas des boîtes noires.
 
 ## Catalogue
 
@@ -35,9 +35,9 @@ automate4z embarque **21 tâches built-in** dans le binaire `a4z`, toutes **Stab
 | [`zos-datasets`](zos-datasets) | Opérations sur PDS, séquentiels, USS |
 | [`z-deps`](z-deps) | Résolution de dépendances pour COBOL/copybooks |
 
-### Tâches données mainframe — jeux d'essai (4)
+### Données mainframe — jeux d'essai et contrôle (7)
 
-Le workflow canonique `constitute-test-dataset` : du copybook au jeu anonymisé.
+Du copybook au jeu d'essai anonymisé, inspecté et comparé — sans session 3270.
 
 | Tâche | Domaine |
 |-------|---------|
@@ -45,6 +45,29 @@ Le workflow canonique `constitute-test-dataset` : du copybook au jeu anonymisé.
 | [`record-decode`](record-codec) | Enregistrements fixes → NDJSON selon le layout |
 | [`record-encode`](record-codec) | NDJSON → enregistrements fixes (round-trip garanti) |
 | [`pii-anonymize`](pii-anonymize) | Pseudonymisation déterministe par règles déclaratives |
+| [`testdata-generate`](testdata-generate) | JSON lisible → fichier séquentiel conforme au copybook (déterministe) |
+| [`data-inspect`](data-inspect) | Lecture champ par champ d'un dataset brut, hexa + valeur décodée |
+| [`data-compare`](data-compare) | Diff de deux datasets sur les **valeurs décodées** — la non-régression batch |
+
+### Tests batch (3)
+
+Le [bloc `tests:`](../workflow-spec/gates-et-tests) et ses tâches : vos batchs testés comme du code, visibles dans la CI comme une suite JUnit.
+
+| Tâche | Domaine |
+|-------|---------|
+| [`spool-analyze`](spool-analyze) | Spool JES2 brut → diagnostic JSON structuré (steps, RC, abends, verdict) |
+| [`job-assert`](job-assert) | Assertions sur le rapport d'analyse (verdict, RC par step, messages) |
+| [`test-report`](test-report) | Verdicts des cas de test → rapport JUnit XML pour Jenkins/GitLab/GitHub |
+
+### Build (3)
+
+Le pipeline de build incrémental façon DBB, sans rien installer sur la LPAR — voir le guide [Construire et tester](../guides/build-and-test).
+
+| Tâche | Domaine |
+|-------|---------|
+| [`source-scan`](source-scan) | Sources locales → graphe de dépendances (COPY, CALL, PGM=) |
+| [`build-impact`](build-impact) | Diff Git × graphe → artefacts à recompiler, en ordre topologique |
+| [`zos-build`](zos-build) | Compile/link via z/OSMF, verdict par le moteur spool-analyze |
 
 ### Tâche IA (1)
 
@@ -80,4 +103,8 @@ Les tâches `zos-*` et `z-deps` résolvent leurs credentials via le profil indiq
 
 ### Encodages
 
-Les transferts entre poste local (UTF-8) et z/OS (EBCDIC, généralement IBM-1047) sont gérés par les adaptateurs avec un défaut sensé et une option `encoding` explicite.
+Les transferts entre poste local (UTF-8) et z/OS (EBCDIC) sont gérés par les adaptateurs avec un défaut sensé et une option `encoding` explicite. Les tâches données (`data-inspect`, `data-compare`, `testdata-generate`…) partagent les mêmes tables EBCDIC embarquées : `ibm-1047`, `cp037`, `cp1140`, `cp297`, `cp1147`, `cp500`, `cp1148`.
+
+### Gates et verdicts
+
+Beaucoup de tâches récentes (`assert`, `data-compare`, `job-assert`, `build-impact`, `zos-build`…) distinguent **« le contrôle a échoué »** (le résultat est là, il est mauvais) de **« le contrôle n'a pas pu tourner »** (panne technique). Ce contrat — et l'idiome `continueOnError` + `if:` qui va avec — est expliqué une fois pour toutes dans [Gates, verdicts et tests](../workflow-spec/gates-et-tests).
