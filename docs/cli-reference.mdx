@@ -5,6 +5,24 @@ title: Référence CLI
 
 # Référence CLI
 
+```
+a4z [command]
+
+  run         Exécuter un workflow
+  lint        Valider un workflow sans l'exécuter
+  plan        Afficher le plan d'exécution résolu
+  serve       Servir l'interface web locale (Studio)
+  runs        Inspecter l'historique des runs
+  docs        Afficher la documentation d'une tâche
+  schema      Exporter les JSON Schema (workflow ou tâche)
+  secrets     Gérer les secrets nommés dans le trousseau de l'OS
+  plugins     Découvrir et gérer les plugins externes
+  app         Assistants du mode App (lanceur double-cliquable)
+  version     Afficher la version
+```
+
+---
+
 ## `a4z run <workflow.yml>`
 
 Exécute un workflow de bout en bout.
@@ -14,8 +32,9 @@ a4z run mon-workflow.yml
 a4z run mon-workflow.yml --input module=COBPRG01 --input lpar=dev01
 a4z run mon-workflow.yml --dry-run
 a4z run mon-workflow.yml --log-format json
-a4z run mon-workflow.yml --parallelism 8
-a4z run mon-workflow.yml --keep-runs 20
+a4z run mon-workflow.yml --events ndjson
+a4z run mon-workflow.yml --resume 01HZ4K3Q2R…
+a4z run mon-workflow.yml --ui
 ```
 
 ### Flags
@@ -23,30 +42,14 @@ a4z run mon-workflow.yml --keep-runs 20
 | Flag | Défaut | Description |
 |------|--------|-------------|
 | `--input/-i key=value` | — | Valeur d'un input (répétable) |
-| `--inputs-file` | — | Fichier YAML de valeurs d'inputs |
 | `--dry-run` | `false` | Affiche le plan sans exécuter |
 | `--log-format` | `text` | Format de sortie : `text` ou `json` |
-| `--parallelism/-p` | `4` | Nombre max de steps simultanés |
-| `--keep-runs` | `50` | Nombre de répertoires de run à conserver |
-| `--ui` | `false` | Ouvre la **surface App** (mode App) au lieu d'exécuter — voir [Mode App](./app/lancer) |
+| `--events` | — | Émet les événements de run structurés sur stdout : `ndjson` (consommé par Studio/VSCode) |
+| `--resume <run-id>` | — | Reprend un run antérieur en sautant les steps déjà réussis |
+| `--parallelism/-p` | `4` | Nombre max de steps simultanés dans un niveau topologique |
+| `--keep-runs` | `50` | Nombre de répertoires de run à conserver sous `.automate4z/runs/` |
+| `--ui` | `false` | Ouvre la **surface App** verrouillée (mode App) pour ce workflow au lieu de l'exécuter en headless — le workflow doit déclarer un bloc `ui:` |
 | `--no-open` | `false` | Avec `--ui`, ne pas ouvrir le navigateur automatiquement |
-
----
-
-## `a4z app launcher <workflow.yml>`
-
-Génère un **lanceur double-cliquable** pour l'App d'un workflow (le workflow doit
-déclarer un bloc [`ui:`](./app/declarer-ui)). Double-cliquer le fichier ouvre
-l'App dans le navigateur (`a4z run … --ui`), **sans terminal**.
-
-```bash
-a4z app launcher jeu-donnees-test.yml
-a4z app launcher jeu-donnees-test.yml -o ~/Bureau
-```
-
-| Flag | Défaut | Description |
-|------|--------|-------------|
-| `--output/-o` | dossier du workflow | Répertoire où écrire le lanceur (`.cmd` / `.command` / `.desktop` selon l'OS) |
 
 ---
 
@@ -59,7 +62,7 @@ Valide un workflow sans l'exécuter. Vérifie :
 - Unicité des `id` de steps
 - Absence de cycles dans `needs`
 - Référencement valide des `needs`
-- Validité des `with` contre le schéma de chaque tâche
+- Validité des `with` contre le schéma de chaque tâche (motifs regex compris — un `ignore:` invalide de `data-compare` échoue ici, avant toute exécution)
 
 ```bash
 a4z lint mon-workflow.yml
@@ -102,13 +105,122 @@ Execution plan:
 
 ---
 
+## `a4z serve`
+
+Démarre un serveur web local qui sert le **Studio** (SPA embarquée dans le binaire) et expose le cœur a4z en HTTP, in-process — voir la [section Studio](studio/overview). Le serveur écoute sur la boucle locale (`127.0.0.1`) par défaut et exige un jeton de session inclus dans l'URL ouverte ; toute requête sans jeton valide est rejetée.
+
+```bash
+a4z serve                       # http://127.0.0.1:4500, navigateur ouvert
+a4z serve --port 0              # port libre choisi automatiquement
+a4z serve --workspace ~/wf      # servir un autre répertoire de travail
+```
+
+| Flag | Défaut | Description |
+|------|--------|-------------|
+| `--host` | `127.0.0.1` | Interface d'écoute (boucle locale uniquement par défaut) |
+| `--port` | `4500` | Port TCP (`0` = port libre) |
+| `--workspace` | répertoire courant | Répertoire de travail servi |
+| `--no-open` | `false` | Ne pas ouvrir le navigateur automatiquement |
+
+---
+
+## `a4z runs`
+
+Inspecte l'historique local des runs (la base du workspace, ancrée à la racine Git).
+
+```bash
+a4z runs list                   # les runs, du plus récent au plus ancien
+a4z runs list --limit 10 --format json
+a4z runs show 01HZ4K3Q2R…      # le détail d'un run : steps, statuts, durées
+```
+
+| Flag | Défaut | Description |
+|------|--------|-------------|
+| `--dir` | répertoire courant | Répertoire de workspace |
+| `--format` | `text` | `text` ou `json` |
+| `--limit` (list) | `50` | Nombre max de runs affichés (`0` = tous) |
+
+---
+
+## `a4z docs <task>`
+
+Affiche la documentation d'une tâche dans le terminal — built-in (`a4z docs data-compare`) ou plugin (`a4z docs plugin/<task>`).
+
+```bash
+a4z docs zos-build
+a4z docs spool-analyze
+```
+
+---
+
+## `a4z schema`
+
+Exporte les JSON Schema (Draft 2020-12) — pour l'outillage, la complétion d'éditeur, ou simplement découvrir le catalogue.
+
+```bash
+a4z schema                      # le schéma complet des fichiers workflow
+a4z schema --task zos-jobs      # le schéma des inputs d'une tâche
+a4z schema --list-tasks         # toutes les tâches enregistrées, avec métadonnées
+```
+
+| Flag | Description |
+|------|-------------|
+| `--task <type>` | Exporte le schéma d'inputs de la tâche donnée |
+| `--list-tasks` | Liste toutes les tâches enregistrées avec leurs métadonnées |
+
+---
+
+## `a4z secrets`
+
+Gère les secrets nommés dans le **trousseau natif de l'OS** (Credential Manager, Keychain, Secret Service). Les valeurs ne sont jamais affichées ; les profils les référencent par `${secret:NOM}`.
+
+```bash
+a4z secrets set ZOS_PASSWORD    # valeur demandée interactivement
+a4z secrets list                # noms uniquement, jamais les valeurs
+a4z secrets delete ZOS_PASSWORD
+```
+
+---
+
+## `a4z plugins`
+
+Découvre et gère les **plugins externes** (binaires `a4z-plugin-*`). Les plugins ne sont jamais cherchés dans le `PATH` — uniquement dans des répertoires dédiés : `~/.a4z/plugins/` (utilisateur), `.a4z/plugins/` (projet), `$A4Z_PLUGINS_DIRS` (additionnels).
+
+```bash
+a4z plugins list                # plugins découverts et leurs tâches
+a4z plugins install ./a4z-plugin-sonar.tar.gz
+a4z plugins lock                # épingle les plugins dans .a4z/plugins.lock
+a4z plugins verify              # vérifie les plugins contre le lockfile
+a4z plugins refresh             # reconstruit le cache des manifestes
+a4z plugins docs <plugin>       # documentation des tâches d'un plugin
+```
+
+Le duo `lock`/`verify` fige les binaires autorisés (empreintes) — un plugin modifié ou inconnu est refusé à l'exécution.
+
+---
+
+## `a4z app launcher <workflow.yml>`
+
+Génère un **lanceur double-cliquable** pour l'App d'un workflow (le workflow doit déclarer un bloc `ui:`). Double-cliquer le fichier ouvre l'App dans le navigateur (`a4z run … --ui`), **sans terminal** — le format s'adapte à l'OS (`.cmd` / `.command` / `.desktop`).
+
+```bash
+a4z app launcher jeu-donnees-test.yml
+a4z app launcher jeu-donnees-test.yml -o ~/Bureau
+```
+
+| Flag | Défaut | Description |
+|------|--------|-------------|
+| `--output/-o` | dossier du workflow | Répertoire où écrire le lanceur |
+
+---
+
 ## `a4z version`
 
 Affiche la version du binaire.
 
 ```bash
 a4z version
-# a4z 0.x.y
+a4z version --format json
 ```
 
 ---
@@ -130,5 +242,5 @@ Disponibles sur toutes les commandes :
 | Code | Signification |
 |------|---------------|
 | `0` | Succès |
-| `1` | Échec métier (lint avec erreurs, run avec step en échec) |
+| `1` | Échec métier (lint avec erreurs, run avec step en échec — qu'il s'agisse d'une gate ou d'une panne technique, voir [Gates, verdicts et tests](workflow-spec/gates-et-tests)) |
 | `2` | Erreur interne (fichier introuvable, YAML invalide, erreur inattendue) |

@@ -7,13 +7,13 @@ title: Introduction
 
 **automate4z** is an open-source workflow orchestrator that erases the boundary between z/OS mainframe execution and local execution.
 
-Distributed as a **single binary `a4z`** (Linux / macOS / Windows × amd64 / arm64), with no runtime required. Workflows are defined in YAML with syntax inspired by GitHub Actions, adapted for the mainframe.
+Distributed as **a single `a4z` binary** (Linux / macOS / Windows × amd64 / arm64), with no runtime to install on the user side — and **nothing to install on z/OS either**: the mainframe is driven through z/OSMF REST. Workflows are defined in YAML with a syntax inspired by GitHub Actions, adapted for the mainframe.
 
 ---
 
 ## Why automate4z?
 
-COBOL teams transitioning to DevOps face a recurring problem: modern CI/CD tools don't speak mainframe. Every pipeline contains hand-rolled scripts that submit JCL jobs, download datasets, and check return codes — all without type safety or observability.
+COBOL teams transitioning to DevOps face a recurring problem: their modern CI/CD tools cannot talk to the mainframe. Every pipeline contains home-grown scripts that submit JCL jobs, download datasets and grep return codes — with no type safety and no observability. And the everyday questions — *what does this file contain? why did this job abend? what needs recompiling?* — remain locked behind a 3270 session.
 
 automate4z solves this with a single YAML file, a single binary, and a consistent interface for both worlds.
 
@@ -23,12 +23,17 @@ automate4z solves this with a single YAML file, a single binary, and a consisten
 
 | Feature | Description |
 |---------|-------------|
-| **16 built-in tasks** | Shell, HTTP, filesystem, archives, notifications, JSON/YAML queries, templates, z/OS jobs and datasets |
+| **30 built-in tasks** | Shell, HTTP, filesystem, archives, notifications, JSON/YAML queries, templates, z/OS jobs and datasets — [the full catalogue](task-reference/overview) |
+| **Mainframe data** | Copybooks → schemas, generated/anonymized test datasets, field-by-field inspection, dataset diff on decoded values |
+| **Batch testing** | The [`tests:` block](workflow-spec/gates-et-tests): analyzed spools, assertions, JUnit report readable by Jenkins/GitLab |
+| **Incremental build** | `source-scan` → `build-impact` → `zos-build`: the DBB-style pipeline, [with nothing installed on the LPAR](guides/build-and-test) |
 | **DAG execution** | Step dependencies resolved automatically; independent steps run in parallel |
 | **`$\{{ }}` expressions** | Context interpolation (inputs, outputs, env, runner) with built-in functions |
-| **z/OSMF profiles** | Connect to LPARs via Zowe profiles or env vars; secrets never in the YAML |
-| **Lint + Plan** | Validate a workflow and display the execution plan without running it |
-| **Single binary** | No Node.js, Python, or Java required — one cross-platform executable |
+| **z/OSMF profiles** | LPAR connections through Zowe profiles, OS keyring or env variables; secrets never in the YAML |
+| **Studio & App mode** | `a4z serve` opens a local web UI ([the Studio](studio/overview)); `a4z run --ui` opens a locked per-workflow operator surface |
+| **External plugins** | Extra tasks shipped as `a4z-plugin-*` binaries, discovered in dedicated, lockable directories (`a4z plugins`) |
+| **Lint + Plan** | Validate a workflow and show the execution plan without running it |
+| **Single binary** | No Node.js, Python or Java required — one cross-platform executable |
 
 ---
 
@@ -60,14 +65,16 @@ a4z run hello.yml --input name=Alice
 | Section | Content |
 |---------|---------|
 | [Getting started](getting-started) | Installation, first workflow, commands, examples |
-| [CLI reference](cli-reference) | `a4z run`, `lint`, `plan`, `version` and all flags |
-| [Workflow spec](workflow-spec/structure) | Full YAML format: inputs, steps, expressions, secrets |
-| [Task reference](task-reference/overview) | Detailed documentation for all 16 built-in tasks |
+| [CLI reference](cli-reference) | `a4z run`, `lint`, `plan`, `serve`, `runs`, `secrets`, `plugins`… and all their flags |
+| [Workflow specification](workflow-spec/structure) | Complete YAML format: inputs, steps, expressions, [gates and tests](workflow-spec/gates-et-tests) |
+| [Task reference](task-reference/overview) | Detailed documentation of the 30 built-in tasks |
+| [Guides](guides/build-and-test) | End-to-end scenarios: build and test, testing a batch |
+| [Web interface (Studio)](studio/overview) | Edit, run and track workflows in the browser |
 
 ---
 
 ## Project status
 
-**v1.1.2 — z/OS tasks stable.** All 16 built-in tasks are stable. z/OS tasks (`zos-jobs`, `zos-datasets`, `z-deps`) are available and validated against z/Xplore.
+**v1.2.x — 30 stable built-in tasks.** The z/OS tasks (`zos-jobs`, `zos-datasets`, `z-deps`) are validated against z/Xplore; recent lots cover mainframe data (copybooks, test datasets, inspection, comparison), batch testing (`tests:` block + JUnit), incremental build (`source-scan` / `build-impact` / `zos-build`), the web Studio, App mode and external plugins.
 
-See the [CHANGELOG](https://github.com/zarafa-dev-io/automate4z/blob/master/CHANGELOG.md) and [GitHub releases](https://github.com/zarafa-dev-io/automate4z/releases) for the full version history.
+See the [CHANGELOG](https://github.com/zarafa-dev-io/automate4z/blob/master/CHANGELOG.md) and the [GitHub releases](https://github.com/zarafa-dev-io/automate4z/releases) for version details.

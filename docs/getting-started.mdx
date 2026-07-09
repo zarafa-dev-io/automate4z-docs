@@ -5,7 +5,7 @@ title: Guide de démarrage
 
 # Guide de démarrage
 
-> **v1.1.2** — toutes les tâches locales et z/OS sont stables. Les fonctionnalités marquées **(v1.x)** ou **(v2)** sont planifiées mais pas encore disponibles.
+> Les **30 tâches built-in** (locales, z/OS, données mainframe, tests batch, build) sont stables — voir [le catalogue](task-reference/overview). Les fonctionnalités marquées **(v2)** dans la spec sont planifiées mais pas encore disponibles.
 
 ## Installation
 
@@ -144,7 +144,9 @@ outputs:                     # optionnel
 | `if` | non | Condition d'exécution |
 | `env` | non | Variables d'env spécifiques au step |
 | `timeout` | non | Durée max (ex : `30s`, `5m`, `1h`) |
-| `continueOnError` | non | `true` pour ignorer l'échec du step |
+| `continueOnError` | non | `true` pour continuer malgré l'échec du step — la clé de [l'idiome de gate](workflow-spec/gates-et-tests) |
+
+Au-delà de `steps:`, un workflow peut aussi porter un bloc [`tests:`](workflow-spec/gates-et-tests) (cas de test batch : setup / execute / assert) et un bloc `ui:` (surface opérateur du mode App).
 
 ---
 
@@ -228,7 +230,10 @@ Level 3:  publish
 
 ## Secrets
 
-Les secrets sont passés via des variables d'environnement préfixées `A4Z_SECRET_`. Leurs valeurs sont masquées (`***`) dans les logs.
+Deux mécanismes, jamais de secret dans le YAML :
+
+- **Variables d'environnement** préfixées `A4Z_SECRET_` — leurs valeurs sont masquées (`***`) dans les logs ;
+- **Trousseau de l'OS** via [`a4z secrets`](cli-reference#a4z-secrets) (`set` / `list` / `delete`) — référencées par `${secret:NOM}` dans les profils.
 
 ```bash
 export A4Z_SECRET_API_TOKEN="ghp_xxxxx"
@@ -272,6 +277,31 @@ Chaque exécution crée un répertoire sous `.automate4z/runs/<runID>/` :
 :::tip
 Ajoutez `.automate4z/` à votre `.gitignore` pour ne pas committer les artefacts de run.
 :::
+
+---
+
+## Explorer depuis le terminal
+
+Le binaire embarque sa propre documentation — pas besoin de quitter le terminal :
+
+```bash
+a4z schema --list-tasks       # les 30 tâches, avec leur catégorie et leur résumé
+a4z docs data-compare         # la doc d'une tâche (inputs, outputs, exemples)
+a4z schema --task zos-jobs    # le JSON Schema des inputs d'une tâche
+a4z runs list                 # l'historique des exécutions du workspace
+```
+
+---
+
+## L'interface web (Studio)
+
+Tout ce que fait le CLI se fait aussi dans le navigateur :
+
+```bash
+a4z serve                     # ouvre le Studio sur http://127.0.0.1:4500
+```
+
+Le Studio édite les workflows (formulaires ou YAML), les exécute, montre l'historique et les résultats — voir la [section Studio](studio/overview). Pour donner un workflow à un opérateur non-développeur, le **mode App** (`a4z run <wf> --ui`) ouvre une surface verrouillée limitée aux inputs déclarés dans le bloc `ui:` du workflow.
 
 ---
 
@@ -357,3 +387,15 @@ a4z lint ci-local.yml
 a4z plan ci-local.yml --input notify=true
 a4z run  ci-local.yml --input notify=true --parallelism 2
 ```
+
+---
+
+## Aller plus loin
+
+| Vous voulez… | Lisez |
+|--------------|-------|
+| Comprendre les gates, verdicts et le bloc `tests:` | [Gates, verdicts et tests](workflow-spec/gates-et-tests) |
+| Monter un pipeline de build COBOL sans DBB | [Construire et tester](guides/build-and-test) |
+| Tester un batch et voir le résultat dans Jenkins/GitLab | [Tester un batch](guides/tester-un-batch) |
+| Parcourir les 30 tâches | [Référence des tâches](task-reference/overview) |
+| Travailler dans le navigateur | [Interface web (Studio)](studio/overview) |

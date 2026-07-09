@@ -5,17 +5,36 @@ title: CLI Reference
 
 # CLI Reference
 
+```
+a4z [command]
+
+  run         Run a workflow
+  lint        Validate a workflow without running it
+  plan        Show the resolved execution plan
+  serve       Serve the local web UI (Studio)
+  runs        Inspect the local run history
+  docs        Show a task's documentation
+  schema      Export JSON Schemas (workflow or task)
+  secrets     Manage named secrets in the OS keyring
+  plugins     Discover and manage external plugins
+  app         App mode helpers (double-clickable launcher)
+  version     Print the version
+```
+
+---
+
 ## `a4z run <workflow.yml>`
 
-Executes a workflow end-to-end.
+Runs a workflow end to end.
 
 ```bash
 a4z run my-workflow.yml
 a4z run my-workflow.yml --input module=COBPRG01 --input lpar=dev01
 a4z run my-workflow.yml --dry-run
 a4z run my-workflow.yml --log-format json
-a4z run my-workflow.yml --parallelism 8
-a4z run my-workflow.yml --keep-runs 20
+a4z run my-workflow.yml --events ndjson
+a4z run my-workflow.yml --resume 01HZ4K3Q2R…
+a4z run my-workflow.yml --ui
 ```
 
 ### Flags
@@ -23,43 +42,27 @@ a4z run my-workflow.yml --keep-runs 20
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--input/-i key=value` | — | Input value (repeatable) |
-| `--inputs-file` | — | YAML file of input values |
-| `--dry-run` | `false` | Display the plan without executing |
+| `--dry-run` | `false` | Print the execution plan without running |
 | `--log-format` | `text` | Output format: `text` or `json` |
-| `--parallelism/-p` | `4` | Max number of simultaneous steps |
-| `--keep-runs` | `50` | Number of run directories to keep |
-| `--ui` | `false` | Opens the **App surface** (App mode) instead of executing — see [App mode](./app/lancer) |
-| `--no-open` | `false` | With `--ui`, don't open the browser automatically |
-
----
-
-## `a4z app launcher <workflow.yml>`
-
-Generates a **double-clickable launcher** for a workflow's App (the workflow must
-declare a [`ui:`](./app/declarer-ui) block). Double-clicking the file opens the
-App in the browser (`a4z run … --ui`), **without a terminal**.
-
-```bash
-a4z app launcher jeu-donnees-test.yml
-a4z app launcher jeu-donnees-test.yml -o ~/Desktop
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--output/-o` | the workflow's folder | Directory to write the launcher into (`.cmd` / `.command` / `.desktop` depending on the OS) |
+| `--events` | — | Emit structured run events to stdout: `ndjson` (consumed by Studio/VSCode) |
+| `--resume <run-id>` | — | Resume a prior run, skipping already-succeeded steps |
+| `--parallelism/-p` | `4` | Max steps executed concurrently within a topological level |
+| `--keep-runs` | `50` | Number of run directories to retain under `.automate4z/runs/` |
+| `--ui` | `false` | Open the locked **App surface** (App mode) for this workflow instead of running it headless — the workflow must declare a `ui:` block |
+| `--no-open` | `false` | With `--ui`, do not open the browser automatically |
 
 ---
 
 ## `a4z lint <workflow.yml>`
 
-Validates a workflow without executing it. Checks:
+Validates a workflow without running it. Checks:
 
 - YAML syntax
 - JSON Schema conformance
-- Uniqueness of step `id`s
-- Absence of cycles in `needs`
+- Step `id` uniqueness
+- No cycles in `needs`
 - Valid `needs` references
-- Validity of `with` against each task's schema
+- `with` validity against each task's schema (including regex patterns — an invalid `data-compare` `ignore:` fails here, before any execution)
 
 ```bash
 a4z lint my-workflow.yml
@@ -78,7 +81,7 @@ my-workflow.yml:18:1  error  cycle detected: alpha → beta → gamma → alpha
 
 ## `a4z plan <workflow.yml>`
 
-Displays the execution plan — resolved inputs and topological levels — without executing.
+Shows the execution plan — resolved inputs and topological levels — without running.
 
 ```bash
 a4z plan my-workflow.yml
@@ -102,20 +105,129 @@ Execution plan:
 
 ---
 
+## `a4z serve`
+
+Starts a local web server that serves the **Studio** (SPA embedded in the binary) and exposes the a4z core over HTTP, in-process — see the [Studio section](studio/overview). The server binds to loopback (`127.0.0.1`) by default and requires a session token included in the opened URL; requests without a valid token are rejected.
+
+```bash
+a4z serve                       # http://127.0.0.1:4500, browser opened
+a4z serve --port 0              # free port picked automatically
+a4z serve --workspace ~/wf      # serve another workspace directory
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--host` | `127.0.0.1` | Interface to bind (loopback only by default) |
+| `--port` | `4500` | TCP port (`0` = free port) |
+| `--workspace` | current directory | Workspace directory to serve |
+| `--no-open` | `false` | Do not open the browser automatically |
+
+---
+
+## `a4z runs`
+
+Inspects the local run history (the workspace database, anchored at the Git root).
+
+```bash
+a4z runs list                   # runs, most recent first
+a4z runs list --limit 10 --format json
+a4z runs show 01HZ4K3Q2R…      # one run's detail: steps, statuses, durations
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--dir` | current directory | Workspace directory |
+| `--format` | `text` | `text` or `json` |
+| `--limit` (list) | `50` | Max runs shown (`0` = all) |
+
+---
+
+## `a4z docs <task>`
+
+Shows a task's documentation in the terminal — built-in (`a4z docs data-compare`) or plugin (`a4z docs plugin/<task>`).
+
+```bash
+a4z docs zos-build
+a4z docs spool-analyze
+```
+
+---
+
+## `a4z schema`
+
+Exports JSON Schemas (Draft 2020-12) — for tooling, editor completion, or simply discovering the catalogue.
+
+```bash
+a4z schema                      # the full workflow-file schema
+a4z schema --task zos-jobs      # a task's input schema
+a4z schema --list-tasks         # every registered task, with metadata
+```
+
+| Flag | Description |
+|------|-------------|
+| `--task <type>` | Export the input schema of the given task |
+| `--list-tasks` | List all registered tasks with their metadata |
+
+---
+
+## `a4z secrets`
+
+Manages named secrets in the **native OS keyring** (Credential Manager, Keychain, Secret Service). Values are never displayed; profiles reference them as `${secret:NAME}`.
+
+```bash
+a4z secrets set ZOS_PASSWORD    # value prompted interactively
+a4z secrets list                # names only, never values
+a4z secrets delete ZOS_PASSWORD
+```
+
+---
+
+## `a4z plugins`
+
+Discovers and manages **external plugins** (`a4z-plugin-*` binaries). Plugins are never looked up in the `PATH` — only in dedicated directories: `~/.a4z/plugins/` (user), `.a4z/plugins/` (project), `$A4Z_PLUGINS_DIRS` (extra).
+
+```bash
+a4z plugins list                # discovered plugins and their tasks
+a4z plugins install ./a4z-plugin-sonar.tar.gz
+a4z plugins lock                # pin plugins in .a4z/plugins.lock
+a4z plugins verify              # verify plugins against the lockfile
+a4z plugins refresh             # rebuild the manifest cache
+a4z plugins docs <plugin>       # a plugin's task documentation
+```
+
+The `lock`/`verify` pair pins the authorized binaries (fingerprints) — a modified or unknown plugin is refused at run time.
+
+---
+
+## `a4z app launcher <workflow.yml>`
+
+Generates a **double-clickable launcher** for a workflow's App (the workflow must declare a `ui:` block). Double-clicking the file opens the App in the browser (`a4z run … --ui`), **without a terminal** — the format adapts to the OS (`.cmd` / `.command` / `.desktop`).
+
+```bash
+a4z app launcher test-dataset.yml
+a4z app launcher test-dataset.yml -o ~/Desktop
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output/-o` | workflow's directory | Directory where the launcher is written |
+
+---
+
 ## `a4z version`
 
-Displays the binary version.
+Prints the binary version.
 
 ```bash
 a4z version
-# a4z v1.1.0
+a4z version --format json
 ```
 
 ---
 
 ## Global flags
 
-Available on all commands:
+Available on every command:
 
 | Flag | Description |
 |------|-------------|
@@ -130,5 +242,5 @@ Available on all commands:
 | Code | Meaning |
 |------|---------|
 | `0` | Success |
-| `1` | Business failure (lint with errors, run with a failed step) |
+| `1` | Business failure (lint with errors, run with a failed step — whether a gate or a technical breakage, see [Gates, verdicts and tests](workflow-spec/gates-et-tests)) |
 | `2` | Internal error (file not found, invalid YAML, unexpected error) |
