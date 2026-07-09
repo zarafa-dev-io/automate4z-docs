@@ -89,6 +89,21 @@ const FeatureList: FeatureItem[] = [
     ),
   },
   {
+    title: <Translate id="homepage.feature.ai.title">IA sous gouvernance</Translate>,
+    icon: '🤖',
+    tint: styles.iconViolet,
+    description: (
+      <Translate
+        id="homepage.feature.ai.description"
+        values={{
+          aiprompt: <strong>ai-prompt</strong>,
+          anonymized: <code>anonymized-only</code>,
+        }}>
+        {"La tâche {aiprompt} appelle un LLM pour expliquer un abend ou résumer un listing — endpoints déclarés dans le profil (jamais d'URL ni de clé dans le YAML), contexte {anonymized} vérifié statiquement sur le DAG, et l'IA reste consultative : elle n'exécute rien, ne décide de rien."}
+      </Translate>
+    ),
+  },
+  {
     title: <Translate id="homepage.feature.lint.title">Lint & Plan</Translate>,
     icon: '🔍',
     tint: styles.iconBlue,
