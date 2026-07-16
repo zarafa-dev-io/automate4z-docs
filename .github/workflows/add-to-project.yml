@@ -1,0 +1,31 @@
+name: Ajouter les issues au kanban
+
+on:
+  issues:
+    types: [opened, reopened]
+
+jobs:
+  add-to-project:
+    name: Ajouter l'issue au projet
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ajouter au projet "automate4z — Suivi bugs & évolutions"
+        id: add
+        uses: actions/add-to-project@v1.0.2
+        with:
+          project-url: https://github.com/orgs/zarafa-dev-io/projects/1
+          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
+
+      - name: Placer l'issue dans la colonne Backlog
+        env:
+          GH_TOKEN: ${{ secrets.ADD_TO_PROJECT_PAT }}
+        run: |
+          gh api graphql -f query='
+            mutation($item: ID!) {
+              updateProjectV2ItemFieldValue(input: {
+                projectId: "PVT_kwDOD87Zg84Bdi5W"
+                itemId: $item
+                fieldId: "PVTSSF_lADOD87Zg84Bdi5WzhYDrys"
+                value: { singleSelectOptionId: "09860b54" }
+              }) { projectV2Item { id } }
+            }' -f item='${{ steps.add.outputs.itemId }}'
