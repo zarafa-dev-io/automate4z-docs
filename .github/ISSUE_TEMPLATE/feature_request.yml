@@ -1,0 +1,66 @@
+name: "✨ Demande d'évolution"
+description: "Proposer une nouvelle fonctionnalité ou une amélioration d'automate4z"
+title: "[Évolution] : "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de proposer une évolution ! Décrivez le besoin avant la solution : cela aide à trouver la meilleure réponse.
+
+  - type: dropdown
+    id: composant
+    attributes:
+      label: Composant concerné
+      description: Quelle partie d'automate4z est concernée ?
+      options:
+        - CLI (automate4z)
+        - Studio
+        - Runtime / exécution de workflows
+        - Tasks (tâches intégrées)
+        - Plugins
+        - Documentation
+        - Nouveau composant
+        - Autre / transverse
+    validations:
+      required: true
+
+  - type: textarea
+    id: besoin
+    attributes:
+      label: Problème ou besoin
+      description: Quel problème cette évolution résoudrait-elle ? Dans quel contexte ?
+      placeholder: "Aujourd'hui, il n'est pas possible de… ce qui m'oblige à…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solution proposée
+      description: Décrivez la fonctionnalité ou l'amélioration souhaitée.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives envisagées
+      description: Avez-vous envisagé d'autres approches ou contournements ?
+
+  - type: dropdown
+    id: priorite
+    attributes:
+      label: Importance pour vous
+      options:
+        - "Indispensable — bloque mon adoption / mon usage"
+        - "Importante — améliorerait nettement mon quotidien"
+        - "Confort — ce serait un plus"
+    validations:
+      required: true
+
+  - type: textarea
+    id: contexte
+    attributes:
+      label: Contexte additionnel
+      description: Exemples de workflows, maquettes, liens vers des outils similaires…
