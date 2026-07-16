@@ -1,0 +1,102 @@
+name: "🐛 Rapport de bug"
+description: "Signaler un dysfonctionnement d'automate4z (CLI, Studio, runtime, plugins…)"
+title: "[Bug] : "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de prendre le temps de signaler ce bug. Plus le rapport est précis, plus vite il pourra être corrigé.
+
+  - type: dropdown
+    id: composant
+    attributes:
+      label: Composant concerné
+      description: Quelle partie d'automate4z est affectée ?
+      options:
+        - CLI (automate4z)
+        - Studio
+        - Runtime / exécution de workflows
+        - Tasks (tâches intégrées)
+        - Plugins
+        - Documentation
+        - Autre / je ne sais pas
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version d'automate4z
+      description: "Résultat de `automate4z --version` (ou version du Studio)."
+      placeholder: "ex : 1.3.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Système d'exploitation
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - z/OS
+        - Autre
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description du bug
+      description: Décrivez clairement et précisément le problème rencontré.
+      placeholder: "Quand je lance…, il se produit…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Étapes pour reproduire
+      description: Listez les étapes permettant de reproduire le problème.
+      placeholder: |
+        1. Créer un workflow avec…
+        2. Exécuter `automate4z run …`
+        3. Observer l'erreur…
+    validations:
+      required: true
+
+  - type: textarea
+    id: attendu
+    attributes:
+      label: Comportement attendu
+      description: Qu'auriez-vous dû obtenir à la place ?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severite
+    attributes:
+      label: Sévérité
+      description: Quel est l'impact de ce bug ?
+      options:
+        - "Critique — blocage total, pas de contournement"
+        - "Majeure — fonctionnalité inutilisable, contournement possible"
+        - "Mineure — gêne limitée"
+        - "Cosmétique — affichage, typo…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / messages d'erreur
+      description: Collez ici les logs pertinents. Ils seront automatiquement formatés en bloc de code.
+      render: shell
+
+  - type: textarea
+    id: contexte
+    attributes:
+      label: Contexte additionnel
+      description: Fichier de workflow (YAML), captures d'écran, configuration particulière…
