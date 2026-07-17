@@ -21,6 +21,15 @@ const config: Config = {
 
   onBrokenLinks: 'throw',
 
+  // `.md` files are parsed as CommonMark (not MDX), so the auto-generated
+  // changelog — mirrored verbatim from the code repo's CHANGELOG.md, which is
+  // full of `${{ … }}` and `<placeholders>` — never breaks the build. `.mdx`
+  // pages keep full MDX. (Docs authored here use `.mdx`; the only `.md` file is
+  // docs/changelog.md.)
+  markdown: {
+    format: 'detect',
+  },
+
   // Even if you don't use internationalization, you can use this field to set
   // useful metadata like html lang. For example, if your site is Chinese, you
   // may want to replace "en" with "zh-Hans".
