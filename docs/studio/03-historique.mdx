@@ -20,6 +20,18 @@ récents en tête, **filtrables** (workflow, statut, déclencheur, id).
 Sélectionner un run affiche son **détail** : statut, **RC**, durée, **paramètres**,
 déclencheur, et la liste des **tâches** (statut, RC, durée).
 
+Le détail est organisé en **onglets** — Overview, puis, selon ce que le run a
+enregistré : **Outputs**, **Inputs**, **Logs**, **Timing** et **Results**.
+
+### Onglet Outputs
+
+Quand le workflow déclare un bloc `outputs:`, l'onglet **Outputs** (entre
+Overview et Logs) liste ses **outputs de niveau workflow** résolus — les valeurs
+nommées calculées à la fin du run à partir des sorties de step (voir
+[Outputs du workflow](../workflow-spec/05-outputs-defaults.mdx)). Les clés sont
+triées et les valeurs **masquées** (secrets remplacés par `***`). Un run dont le
+workflow ne déclare pas d'`outputs:` n'a pas cet onglet.
+
 {/* 📸 CAPTURE À AJOUTER — Détail d'un run : en-tête avec statut/RC/durée, section
     Paramètres, et la liste des tâches.
     Fichier : static/img/studio/execution-detail.png

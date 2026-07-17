@@ -5,6 +5,10 @@ title: Outputs et Defaults
 
 # Outputs du workflow
 
+Le bloc `outputs:` expose des valeurs nommées, résolues à partir des sorties de
+step, à la fin du run. Chaque `value` est une expression `${{ … }}` évaluée une
+fois le run terminé — elle voit donc l'ensemble des `steps.<id>.outputs.*`.
+
 ```yaml
 outputs:
   jobId:
@@ -14,10 +18,39 @@ outputs:
     value: ${{ steps.compile.outputs.rc }}
 ```
 
-Les outputs du workflow sont :
-- Affichés en fin d'exécution CLI
-- Exposés en GitHub Action via les outputs du job
-- Consommables par un workflow appelant (v1.x)
+## Où les voir
+
+- **CLI** — affichés en fin d'exécution, dans un bloc `Outputs:` sous le
+  `Summary:` (clés triées, valeurs de secrets masquées) :
+
+  ```
+  Summary:
+    ✔  compile
+
+  Outputs:
+    jobId  JOB01234
+    rc     0
+  ```
+
+- **Studio** — en direct dans la vue d'exécution (bloc **Outputs** en fin de
+  run), et dans l'historique via un onglet **Outputs** dédié sur le détail du
+  run. Les valeurs sont résolues et masquées côté serveur ; un workflow sans
+  bloc `outputs:` n'affiche ni bloc ni onglet.
+
+## Résolution
+
+- Une référence à une **clé absente** (`steps.x.outputs.cléInconnue`) se résout
+  à une valeur vide — comme toute référence absente ailleurs, ce n'est pas une
+  erreur.
+- Une référence à un **step inexistant** (une coquille) ne peut pas être
+  évaluée ; le run étant déjà terminé, l'erreur est conservée telle quelle sous
+  la forme `<unresolved: …>` pour aider au diagnostic plutôt que de disparaître.
+
+:::note Prévu (v1.x)
+Deux autres usages de ces outputs sont prévus mais **pas encore implémentés** :
+l'exposition en **GitHub Action** via les outputs du job, et la consommation par
+un **workflow appelant**.
+:::
 
 ---
 

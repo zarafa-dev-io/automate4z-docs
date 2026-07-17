@@ -55,6 +55,13 @@ en cours), et un **diagramme de Gantt** se met à jour avec un repère « mainte
 dans l'espace de travail, ex. une archive) apparaissent avec des **liens de téléchargement**
 — y compris pour un run en échec (sorties partielles consultables).
 
+Si le workflow déclare un bloc `outputs:`, ses **outputs de niveau workflow**
+résolus apparaissent dans un bloc **Outputs** en fin de suivi (clés triées,
+valeurs de secrets masquées). Voir
+[Outputs du workflow](../workflow-spec/05-outputs-defaults.mdx) pour la déclaration ;
+ils sont aussi consultables plus tard depuis l'onglet **Outputs** de
+l'[historique](./03-historique.mdx#onglet-outputs).
+
 {/* 📸 CAPTURE À AJOUTER — Section Artefacts avec un ou plusieurs liens de téléchargement.
     Fichier : static/img/studio/run-artifacts.png
     Puis remplacer ce bloc par : ![Artefacts](/img/studio/run-artifacts.png) */}
