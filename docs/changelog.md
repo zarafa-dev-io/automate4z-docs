@@ -297,13 +297,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Canvas no-code : l'**ajout d'une tâche** (via le « + » sur un lien, le bouton « + Add step » ou le glisser-déposer du catalogue) **met désormais à jour le graphe immédiatement**, sans devoir basculer Code → No-code. La synchro WEB-15 conservait les positions des nœuds existants même lors d'un **ajout/suppression** : le nouveau nœud atterrissait sur le créneau dagre du *nouveau* layout tandis que le nœud aval gardait son ancienne position — les deux se **superposaient** et l'insertion semblait sans effet. Les positions ne sont désormais conservées que pour les éditions **sans changement de topologie** (le but réel de WEB-15 : ne pas faire sauter le graphe pendant la frappe) ; tout ajout/suppression de step déclenche un **re-layout complet**.
 
-## [1.1.2] - 2026-06-01
+## [0.5.2] - 2026-06-01
 
 ### Fixed
 
 - `a4z version` affichait `a4z dev` au lieu du numéro de version dans les binaires de release. Double correction : suppression des guillemets simples autour de la valeur `-X` dans `.goreleaser.yml` (ils pouvaient être interprétés littéralement, rendant l'injection inopérante) et ajout d'un fallback `runtime/debug.ReadBuildInfo()` dans `cmd/a4z/main.go` pour les binaires installés via `go install ...@vX.Y.Z`.
 
-## [1.1.1] - 2026-06-01
+## [0.5.1] - 2026-06-01
 
 ### Fixed
 
@@ -311,7 +311,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ajout de la variable d'environnement `A4Z_ZOS_BASEPATH` pour surcharger le préfixe gateway sans modifier le profil Zowe.
 - Suppression du message `WARN z/OSMF TLS verification disabled` qui s'affichait systématiquement sur la console lorsque `rejectUnauthorized` était activé (comportement explicitement configuré par l'utilisateur, le warning était du bruit).
 
-## [1.1.0] - 2026-05-31
+## [0.5.0] - 2026-05-31
 
 z/OS tasks stable. Full COBOL build pipeline now possible in a single workflow YAML.
 
@@ -329,7 +329,7 @@ z/OS tasks stable. Full COBOL build pipeline now possible in a single workflow Y
 
 - US-Q3-00: socle z/OSMF — infrastructure partagée pour toutes les tâches z/OS ; architecture hexagonale (`internal/zos/zosmf/` port + adaptateur REST, `internal/zos/profile/` résolution de profils) ; `zosmf.Client` interface (port) : `ListDatasets`, `DatasetExists`, `ReadDataset`, `WriteDataset`, `CreateDataset`, `DeleteDataset`, `SubmitJob`, `GetJobStatus`, `GetJobOutput`, `CancelJob` ; `zosmf.RestClient` (adaptateur REST) : appels directs z/OSMF via `net/http`, headers CSRF (`X-CSRF-ZOSMF-HEADER`), cookie jar (LTPA2/jwtToken), basic auth + token ; `zosmf.Session` : gestion TLS (`InsecureSkipVerify` + warning log), timeout 30s, cookie jar via `net/http/cookiejar` ; `retry.go` : backoff exponentiel (3 tentatives, 1s initial, ×2), annulable via context, retry sur 5xx + erreurs réseau, pas de retry sur 401/403/4xx ; `encoding.go` : `ConvertEncoding(data, from, to)` réutilisant `golang.org/x/text` (UTF-8 ↔ IBM-1047/1140/500, UTF-16, ISO-8859-1, Windows-1252) ; `profile/ZosProfile` : modèle de connexion résolu ; `profile/resolver.go` : ordre flags > env (`A4Z_ZOS_*`) > Zowe nommé > défaut Zowe > `ErrProfileNotFound` ; `profile/zowe_config.go` : parsing `zowe.config.json` (format Zowe CLI v2), résolution `rejectUnauthorized`, champs `secure` ; `profile/credentials.go` : `KeyringCredentialFunc` (OS keyring via `go-keyring`), `EnvCredentialFunc` (fallback env), `ChainCredentialFunc` ; 6 erreurs typées zosmf + 2 erreurs profile ; `mock/server.go` : mock z/OSMF httptest.TLSServer réutilisable (datasets CRUD + jobs, ForceStatus, RequireToken, RequestCount) ; tests d'intégration `//go:build zos_integration` (skippés sans `A4Z_ZOS_*`) ; `cmd/zosdemo/` : outil de démo interne (non distribué) ; `docs/testing-with-zxplore.md` : guide d'exécution des tests contre z/Xplore ; `github.com/zalando/go-keyring` ajouté comme dépendance directe ; couverture `profile` 86.8%, `zosmf` 86.4%, `mock` 80%+.
 
-## [1.0.0] - 2026-05-29
+## [0.4.0] - 2026-05-29
 
 First production-ready release. Compatibility promise: any workflow valid under v1.0 remains valid through v2.0.0.
 
