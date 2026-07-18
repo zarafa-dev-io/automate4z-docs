@@ -84,7 +84,8 @@ const config: Config = {
           position: 'right',
         },
         {
-          href: 'https://github.com/zarafa-dev-io/automate4z',
+          // Public entry point: the main a4z repo is private, issues live here.
+          href: 'https://github.com/zarafa-dev-io/automate4z-docs/issues',
           label: 'GitHub',
           position: 'right',
         },
@@ -107,11 +108,11 @@ const config: Config = {
           items: [
             {
               label: 'GitHub',
-              href: 'https://github.com/zarafa-dev-io/automate4z',
+              href: 'https://github.com/zarafa-dev-io/automate4z-docs',
             },
             {
               label: 'Issues',
-              href: 'https://github.com/zarafa-dev-io/automate4z/issues',
+              href: 'https://github.com/zarafa-dev-io/automate4z-docs/issues',
             },
             {
               label: 'Licence (EULA)',

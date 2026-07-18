@@ -3,6 +3,8 @@ sidebar_position: 2
 title: Getting started
 ---
 
+import release from '@site/src/data/release.json';
+
 # Getting started
 
 > The **30 built-in tasks** (local, z/OS, mainframe data, batch testing, build) are stable — see [the catalogue](task-reference/overview). Features marked **(v2)** in the spec are planned but not yet available.
@@ -11,7 +13,7 @@ title: Getting started
 
 ### Download the binary (recommended)
 
-**Current version: v1.1.2** · [All releases](https://github.com/zarafa-dev-io/automate4z/releases)
+**Current version: v{release.version}** ({release.date})
 
 The links below always point to the **latest available release**.
 
@@ -33,22 +35,13 @@ tar -xzf automate4z_latest_linux_amd64.tar.gz
 mv a4z /usr/local/bin/
 ```
 
-### Build from source
-
-Requires Go 1.22 or later.
-
-```bash
-git clone https://github.com/zarafa-dev-io/automate4z.git
-cd automate4z
-go build -o a4z ./cmd/a4z
-```
-
 ### Verify installation
 
 ```bash
 a4z version
-# a4z v1.1.2
 ```
+
+The command prints the installed version — v{release.version} for the current release.
 
 ---
 
@@ -404,3 +397,13 @@ a4z run  ci-local.yml --input notify=true --parallelism 2
 | Browse the 30 tasks | [Task reference](task-reference/overview) |
 | Add your own tasks | [Writing an external plugin](plugins/creer-un-plugin) |
 | Work in the browser | [Web interface (Studio)](studio/overview) |
+
+---
+
+## Reporting an issue
+
+Found a bug, have a question or a feature idea? Project issues are tracked publicly on the documentation repository:
+
+**[Open an issue](https://github.com/zarafa-dev-io/automate4z-docs/issues/new/choose)** · [Browse existing issues](https://github.com/zarafa-dev-io/automate4z-docs/issues)
+
+For a bug, include the version (`a4z version`), your operating system, and if possible the workflow YAML involved and the full error message — that is what makes a quick diagnosis possible.
