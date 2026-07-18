@@ -35,22 +35,13 @@ tar -xzf automate4z_latest_linux_amd64.tar.gz
 mv a4z /usr/local/bin/
 ```
 
-### Compiler depuis les sources
-
-Requiert Go 1.22 ou supérieur.
-
-```bash
-git clone https://github.com/zarafa-dev-io/automate4z.git
-cd automate4z
-go build -o a4z ./cmd/a4z
-```
-
 ### Vérifier l'installation
 
 ```bash
 a4z version
-# a4z v0.15.0
 ```
+
+La commande affiche la version installée — v{release.version} pour la release courante.
 
 ---
 
@@ -406,3 +397,13 @@ a4z run  ci-local.yml --input notify=true --parallelism 2
 | Parcourir les 30 tâches | [Référence des tâches](task-reference/overview) |
 | Ajouter vos propres tâches | [Créer un plugin externe](plugins/creer-un-plugin) |
 | Travailler dans le navigateur | [Interface web (Studio)](studio/overview) |
+
+---
+
+## Signaler un problème
+
+Un bug, une question, une idée d'évolution ? Les issues du projet sont suivies publiquement sur le dépôt de la documentation :
+
+**[Ouvrir une issue](https://github.com/zarafa-dev-io/automate4z-docs/issues/new/choose)** · [Voir les issues existantes](https://github.com/zarafa-dev-io/automate4z-docs/issues)
+
+Pour un bug, indiquez la version (`a4z version`), votre système d'exploitation, et si possible le workflow YAML concerné et le message d'erreur complet — c'est ce qui permet un diagnostic rapide.
