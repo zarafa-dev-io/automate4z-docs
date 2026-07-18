@@ -1,0 +1,108 @@
+---
+sidebar_position: 1.5
+title: Dashboard
+---
+
+# Dashboard
+
+The **Dashboard** is Studio's **home view**, shown by default when you open the interface.
+It is a **global overview** across all workflows, over a **time window**: success rate,
+execution volumes, trends and latest runs, at a glance.
+
+It sits under the **Dashboard** entry in the sidebar (**Dashboard / Workflows /
+Executions / Secrets / Settings**, introduced in [Overview](./overview)). For the
+**details** of a specific run, open the [run history](./historique).
+
+{/* 📸 SCREENSHOT TO ADD — the Dashboard: sidebar visible, the 4 KPI tiles,
+    the combined timeline + donut, and the "Last executions" and "Favorites" tables.
+    File: static/img/studio/dashboard.png
+    Image below (keep this comment): ![Studio Dashboard](/img/studio/dashboard.png) */}
+
+![Studio Dashboard](/img/studio/dashboard.png)
+
+:::info Aggregates computed server-side
+The metrics are **not** computed in the browser: the server runs **SQL** queries against
+the executions database (`runs.db`) and returns ready-to-render aggregates. The view
+reloads on display via `GET /api/viz/overview?from=&to=&workflow=&status=` (a **30-day**
+window by default).
+:::
+
+---
+
+## Control bar
+
+At the top of the Dashboard, a control bar defines **what** to aggregate and **over which
+period**.
+
+| Control | Role |
+|---------|------|
+| **Interval** | Segmented selector **7d / 30d / 90d** — the time window (30d by default). |
+| **Workflow filter** | Checkbox menu, **multi-select**: restricts the overview to a subset of workflows. |
+| **Status filter** | Restricts to statuses `success` / `failure` / `running` / `cancelled`. |
+| **Clear all** | Resets all active filters. |
+| **Refresh data** | Manually reloads the aggregates. |
+| **Periodic refresh** | Checkbox: automatic, periodic refresh. |
+| **Saved filters** | Name, save, apply and delete a filter combination. |
+
+Active filters appear as removable **chips**: clicking a chip's cross removes that filter
+without touching the others.
+
+:::tip Saved filters
+A useful combination (for example *one workflow + `failure` over 90d*) can be **named and
+saved**, then **applied** in one click. Saved filters are **persisted locally** (in the
+browser), so they are specific to this machine.
+:::
+
+---
+
+## Overview panel
+
+### KPI tiles
+
+Four tiles summarize the current window:
+
+| Tile | Content |
+|------|---------|
+| **Success ratio** | Percentage of runs that completed successfully. |
+| **Failed ratio** | Percentage of failed runs. |
+| **In progress** | Number of running runs — shown in **amber** when &gt; 0. |
+| **Executions** | Total executions over the window. |
+
+### Combined timeline
+
+A **timeline** combines, per day, **stacked bars by status** (execution volume broken down
+by `success` / `failure` / `running` / `cancelled`) and an **average-duration line** drawn
+on a **secondary axis**. It shows load and the evolution of run times at once.
+
+### Donut
+
+A **donut** shows the **status breakdown** over the window, with the **total in the
+center**.
+
+---
+
+## Bottom tables
+
+Two tables complete the overview:
+
+- **Last executions** — the **5 most recent runs**. Clicking a row **opens the run** in the
+  [history](./historique).
+- **Favorites** — up to **5 favorite workflows**, **per workspace**. A favorite whose file
+  no longer exists is **hidden**. Each entry offers **open** (in the [editor](./editeur))
+  and **run** actions.
+
+A link points back to this documentation from the panel.
+
+:::note Favorites per workspace
+The **Favorites** list follows the current [workspace](./espaces): switching workspaces
+changes the favorites shown. Favorites are **not** shared across workspaces.
+:::
+
+---
+
+## See also
+
+- [Overview](./overview) — the sidebar and Studio's structure.
+- [Run history](./historique) — the details of a run (Gantt, logs, resume).
+- [Workspaces](./espaces) — isolation of executions and favorites.
+- [CLI reference](../cli-reference) — `a4z serve` options.

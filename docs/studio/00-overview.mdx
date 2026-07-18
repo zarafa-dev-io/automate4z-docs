@@ -10,10 +10,13 @@ Elle permet d'éditer, valider, exécuter et suivre des workflows — en mode **
 (éditeur YAML) ou **no-code** (canvas visuel) — sans rien installer de plus : la SPA
 est **embarquée dans le binaire**.
 
-{/* 📸 CAPTURE À AJOUTER — Vue globale de Studio : en-tête (sélecteur d'espace,
-    onglets Editor / Executions), liste des workflows à gauche, éditeur + DAG au centre.
+{/* 📸 CAPTURE À AJOUTER — La coquille de Studio : barre latérale (Dashboard, Workflows,
+    Exécutions, Secrets, Settings), en-tête (sélecteur d'espace, thème, version) et la
+    liste des workflows au centre.
     Fichier : static/img/studio/overview.png
-    Puis remplacer ce bloc par : ![Vue d'ensemble de Studio](/img/studio/overview.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![Vue d'ensemble de Studio](/img/studio/overview.png) */}
+
+![Vue d'ensemble de Studio](/img/studio/overview.png)
 
 ---
 
@@ -38,24 +41,89 @@ a4z serve
   avertissement (il n'y a **pas d'authentification réseau**).
 - Un **jeton de session** aléatoire est généré et inclus dans l'URL ouverte ; toute
   requête sans jeton valide reçoit `401`. Les méthodes mutantes sont protégées contre le
-  CSRF.
+  CSRF (jeton exigé dans un en-tête, `Origin` loopback).
 - `a4z serve` est un **binaire one-shot** : pas de daemon, pas de service.
 
 ---
 
-## L'en-tête
+## Se repérer : en-tête & barre latérale
 
-L'en-tête de Studio regroupe :
+Studio s'organise autour d'un **en-tête** persistant et d'une **barre latérale** d'icônes.
 
-- le **sélecteur d'espace de travail** (ouvrir / basculer entre plusieurs dossiers — voir
-  [Espaces de travail](./espaces)) ;
-- la bascule **Editor / Executions** (édition vs [historique des exécutions](./historique)) ;
-- le thème clair / sombre et la version du binaire.
+L'**en-tête** regroupe :
 
-{/* 📸 CAPTURE À AJOUTER — Gros plan de l'en-tête : sélecteur d'espace + onglets
-    Editor/Executions + bascule de thème.
+- le logo **`a4z` automate4z Studio** ;
+- au centre, le **sélecteur d'espace de travail** (ouvrir / basculer entre plusieurs
+  dossiers — voir [Espaces de travail](./espaces)) ;
+- à droite, la **bascule de thème** (clair / sombre, mémorisée) et la **version** du
+  binaire (`a4z <version> · core <version>`).
+
+{/* 📸 CAPTURE À AJOUTER — Gros plan de l'en-tête : sélecteur d'espace + bascule de thème
+    + version du binaire.
     Fichier : static/img/studio/header.png
-    Puis remplacer ce bloc par : ![En-tête de Studio](/img/studio/header.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![En-tête de Studio](/img/studio/header.png) */}
+
+![En-tête de Studio](/img/studio/header.png)
+
+La **barre latérale** donne accès aux cinq surfaces de Studio :
+
+| Section | Rôle |
+|---------|------|
+| **Dashboard** | [Tableau de bord](./dashboard) d'accueil : KPIs, tendances et derniers runs, tous workflows confondus. |
+| **Workflows** | La **liste des workflows** de l'espace (voir plus bas). |
+| **Exécutions** | L'[historique des runs](./historique) (tous workflows), avec détail, Gantt et reprise. |
+| **Secrets** | Le panneau [Secrets](./secrets) (trousseau de l'OS, en écriture seule). |
+| **Settings** | Les [réglages & profils](./settings) (rétention d'historique, IA, notifications…). |
+
+---
+
+## La liste des Workflows
+
+La section **Workflows** liste les fichiers de workflow découverts dans l'espace de
+travail (extension **`.a4z.yaml` / `.a4z.yml`**, scan récursif ignorant les dossiers
+cachés et `.automate4z`). Un workflow reconnu mais invalide est **listé quand même**,
+signalé par un ⚠.
+
+| Colonne | Contenu |
+|---------|---------|
+| **Name / id** | Nom du workflow + chemin de fichier (clic = ouvrir). |
+| **Last execution** | Date du dernier run, ou « never run ». |
+| **Status** | Dernier statut, coloré. |
+| **Statistics** | Nombre de runs, % de succès, **sparkline** des 10 derniers. |
+| **Actions** | **Run** (▶), **favori** (★, plafonné à 5), **Delete** (avec confirmation). |
+
+Un champ **Filter workflows…** filtre la liste, **Refresh** relit l'espace (un workflow
+créé hors Studio n'apparaît qu'après relecture), et **+ New workflow** en crée un depuis
+un gabarit minimal valide.
+
+---
+
+## La page d'un workflow
+
+Ouvrir un workflow affiche une page à **onglets**, avec un fil d'Ariane
+`Workflows / <nom> / <onglet>`. À droite de la barre d'onglets : le **favori** (★) et le
+bouton **Run** (voir [Exécution & suivi](./execution)).
+
+| Onglet | Contenu |
+|--------|---------|
+| **Overview** | Synthèse du workflow : KPIs sur l'intervalle choisi (7d/30d/90d), carte **Workflow** (name, fichier, description, nombre de steps), **Last execution**, et un aperçu de la topologie. |
+| **Topology** | La [vue DAG](./editeur#topology) du graphe d'exécution, **en lecture seule** (statuts en direct pendant un run). |
+| **Executions** | L'[historique des runs](./historique) filtré sur ce workflow. |
+| **Editor** | L'[éditeur de workflow](./editeur) (modes **Code** et **No-code**). |
+
+{/* 📸 CAPTURE À AJOUTER — Onglet Overview d'un workflow : KPIs, carte Workflow
+    (name/fichier/description/steps) et Last execution.
+    Fichier : static/img/studio/workflow-overview.png
+    Image ci-dessous (ce commentaire est conservé) : ![Aperçu d'un workflow](/img/studio/workflow-overview.png) */}
+
+![Aperçu d'un workflow](/img/studio/workflow-overview.png)
+
+{/* 📸 CAPTURE À AJOUTER — Onglet Topology : le DAG en lecture seule (nœuds de tâches
+    reliés par leurs dépendances).
+    Fichier : static/img/studio/topology.png
+    Image ci-dessous (ce commentaire est conservé) : ![Topologie d'un workflow](/img/studio/topology.png) */}
+
+![Topologie d'un workflow](/img/studio/topology.png)
 
 ---
 
@@ -68,3 +136,13 @@ L'en-tête de Studio regroupe :
 
 Les deux vues partagent la **même représentation interne** : passer de l'une à l'autre
 ne perd jamais le contenu.
+
+---
+
+## Étapes suivantes
+
+- **[Tableau de bord](./dashboard)** — lire l'état global (KPIs, tendances, favoris).
+- **[Éditeur de workflow](./editeur)** — écrire et valider en mode Code.
+- **[Éditeur no-code](./no-code)** — construire visuellement.
+- **[Exécution & suivi](./execution)** — lancer et suivre un run en direct.
+- **[Historique, Gantt & reprise](./historique)** — relire, comparer, reprendre.

@@ -5,58 +5,124 @@ title: History, Gantt & resume
 
 # Run history
 
-The **Executions** tab lists the **persisted** runs (per workspace), most recent
-first, **filterable** (workflow, status, trigger, id).
+History relies on the **same component** in two places: the **Executions** section of
+the sidebar (all workflows in the space) and a workflow's **Executions** tab (filtered
+to its path). The layout is a **master / detail** backed by a **SQLite** database
+`.automate4z/runs.db` (one per space).
 
-{/* 📸 SCREENSHOT TO ADD — Executions view: run list on the left (status, duration,
-    timestamp, trigger) and the filter field.
+---
+
+## Run list
+
+The list (left) shows the most recent runs first. It offers a **Filter runs…** field
+and a refresh button. Each row shows:
+
+- a **status icon**;
+- the **workflow name**;
+- the **duration** and **timestamp**;
+- the **trigger** (`studio` or `cli`).
+
+Deletion is per row, with **confirmation**. It is **refused (409) while the run is still
+in progress**.
+
+:::note Under the hood
+The list calls `GET /api/runs?limit=` (**200** by default, most recent first).
+:::
+
+{/* 📸 SCREENSHOT TO ADD — Executions view: run list on the left (status icon, duration,
+    timestamp, trigger) and the Filter runs… field.
     File: static/img/studio/executions-list.png
-    Then replace this block with: ![Executions list](/img/studio/executions-list.png) */}
+    Image below (keep this comment): ![Executions list](/img/studio/executions-list.png) */}
+
+![Executions list](/img/studio/executions-list.png)
 
 ---
 
 ## Run detail
 
-Selecting a run shows its **detail**: status, **RC**, duration, **parameters**,
-trigger, and the list of **tasks** (status, RC, duration).
+Selecting a run shows its **detail** (right). The header carries the **status icon**,
+the **name** and the run **id**, plus the **Resume** and **Relaunch** actions.
 
-{/* 📸 SCREENSHOT TO ADD — Run detail: header with status/RC/duration, Parameters
-    section, and the task list.
+### Sub-tabs
+
+They only appear when there is more than the **Overview** to show:
+
+| Sub-tab | Shown if… | Content |
+| --- | --- | --- |
+| **Overview** | always | Run summary (see below). |
+| **Outputs** | the run has outputs | Per-task outputs. |
+| **Inputs** | the run has inputs | Recorded `inputs` values. |
+| **Logs** | there are logs | Persisted lines, grouped by step. |
+| **Timing** | there are steps | Per-step duration vs historical median. |
+| **Results** | the workflow declares `ui.results` | Result view defined by the workflow. |
+
+**Overview** gathers: **Status**, **Exit code** (red if ≠ 0), **Duration**, **Trigger**,
+**Started**, a link to the **Workflow**, the **Timeline (Gantt)**, the **Tasks** section
+and the **Artifacts** section.
+
+The **Tasks** section lists tasks **in execution order**: status, id, name, **reason**
+(e.g. *if-false*, *needs-not-met*), duration and **RC**. **Artifacts** are downloadable
+(name + size).
+
+The **Logs** sub-tab groups lines **by step** and offers a **DEBUG** toggle (debug lines
+are hidden by default). The **Timing** sub-tab compares each step's duration to its
+**historical median**.
+
+{/* 📸 SCREENSHOT TO ADD — Run detail: header (status / exit code / duration),
+    Overview sub-tab and Tasks section.
     File: static/img/studio/execution-detail.png
-    Then replace this block with: ![Run detail](/img/studio/execution-detail.png) */}
+    Image below (keep this comment): ![Run detail](/img/studio/execution-detail.png) */}
+
+![Run detail](/img/studio/execution-detail.png)
 
 ---
 
 ## Gantt chart
 
-The detail includes a **timeline (Gantt)**: each task is a bar positioned by its
-**start** and **duration**, colored by status. **Parallel tasks overlap**
-faithfully, and the **offending task** is highlighted. For a running run, the
-Gantt updates **live** with a **"now"** marker.
+The **Timeline (Gantt)** represents each task as a **bar** positioned by its **start**
+and **duration**, colored by status. **Parallel tasks overlap** faithfully, and the
+**offending task** is highlighted. For a running run, the Gantt updates **live** with a
+**"now"** marker.
 
-{/* 📸 SCREENSHOT TO ADD — Gantt of a run with parallelism (overlapping bars),
-    ideally a case with a failed task (red bar).
+{/* 📸 SCREENSHOT TO ADD — Timeline / Gantt of a run with parallelism (overlapping bars),
+    ideally a failed task.
     File: static/img/studio/gantt.png
-    Then replace this block with: ![Gantt chart](/img/studio/gantt.png) */}
+    Image below (keep this comment): ![Gantt chart](/img/studio/gantt.png) */}
+
+![Gantt chart](/img/studio/gantt.png)
 
 ---
 
 ## Relaunch
 
-From the detail, **Relaunch** reopens the workflow and **re-runs** it with the
-recorded parameters.
+**Relaunch** reopens the workflow and re-runs it with the run's **recorded inputs**. The
+action is **disabled if the workflow path is unknown**.
 
 ---
 
-## Resume after failure
+## Resume — resume after failure
 
-For an **interrupted** run (failure, stop), Studio offers **"Resume from
-&lt;task&gt;"** based on the persisted state: tasks that **already succeeded are not
-replayed**, and live monitoring resumes. If the run is **not resumable** (already
-succeeded, file gone, no successful task), the option is **disabled with an
-explanation**.
+The **Resume** button is **only shown if the run did not succeed**. Its label becomes
+**"Resume from &lt;task&gt;"** when resuming is possible; otherwise it stays **"Resume"
+disabled**, with the reason in a tooltip.
 
-{/* 📸 SCREENSHOT TO ADD — Detail of a failed run showing the
-    "Resume from &lt;task&gt;" button (and optionally the disabled case with its tooltip).
+A run is **resumable if and only if**:
+
+- it **did not already succeed**;
+- its **workflow file still exists**;
+- **at least one step succeeded**.
+
+The **resume task** is the **first non-successful step** in execution order. The server
+re-runs the workflow by **re-injecting the already-successful steps**: those are **not
+replayed**.
+
+{/* 📸 SCREENSHOT TO ADD — Detail of a failed run showing the "Resume from &lt;task&gt;" button.
     File: static/img/studio/resume.png
-    Then replace this block with: ![Resume after failure](/img/studio/resume.png) */}
+    Image below (keep this comment): ![Resume a run](/img/studio/resume.png) */}
+
+![Resume a run](/img/studio/resume.png)
+
+:::tip
+To re-run a run in full rather than resuming mid-way, use **Relaunch**. To start a fresh
+run from scratch, see [Run a workflow](./execution).
+:::

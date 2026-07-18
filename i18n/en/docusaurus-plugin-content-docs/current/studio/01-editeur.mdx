@@ -5,65 +5,127 @@ title: Workflow editor
 
 # Workflow editor (Code mode)
 
-**Code** mode shows the YAML editor on the left and the read-only **DAG view**
-(execution graph) on the right.
+**Code** mode shows the YAML editor on the left and a **two-tab side panel**
+(**Topology** / **Documentation**) on the right. A **resizable split** separates them.
 
-{/* 📸 SCREENSHOT TO ADD — Split view: CodeMirror editor on the left, DAG on the right,
-    with the "✓ schema valid" indicator and the "Saved / ● Modified" state.
+At the top, the **file bar** gathers the **Code / No-code** toggle, the validity indicator
+**✓ schema valid** / **✕ N error(s)**, the save state **● Modified** / **Saved** (and
+**Saving…** while writing), and the **Save** button (disabled until the file is modified).
+The **Ctrl/Cmd-S** shortcut saves.
+
+{/* 📸 SCREENSHOT TO ADD — Editor tab: CodeMirror on the left, DAG Topology on the right,
+    with the ✓ schema valid and Saved indicators in the file bar.
     File: static/img/studio/editor-split.png
-    Then replace this block with: ![Editor + DAG](/img/studio/editor-split.png) */}
+    Image below (keep this comment): ![Editor + DAG Topology](/img/studio/editor-split.png) */}
+
+![Editor + DAG Topology](/img/studio/editor-split.png)
 
 ---
 
 ## Editing
 
-- **CodeMirror 6** with YAML highlighting, line numbers and folding.
-- **`${secret:NAME}`** (amber) and **`${{ … }}`** (purple) references are
-  highlighted to set them apart.
-- **Ctrl/Cmd-S** saves. The write is **verbatim** (your comments, order and style
-  are preserved). A **conflict detection** warns if the file changed on disk since
-  it was opened (a **Reload / Overwrite** banner).
+The editor is built on **CodeMirror 6**: line numbers, **folding**, and undo/redo
+**history**.
+
+**Highlighting** distinguishes keys, strings (green), numbers and booleans (amber), and
+comments (gray, italic). Two reference forms are **highlighted** so you can spot them at a
+glance:
+
+| Reference | Role | Highlight |
+| --- | --- | --- |
+| `${secret:…}` | Secret injected at run time (see [Secrets](./secrets)) | **bold amber** |
+| `${{ … }}` | Evaluated expression | **purple** |
+
+:::info Verbatim write
+Saving (`Save` or **Ctrl/Cmd-S**) is **atomic** and **verbatim**: your comments, key order,
+and style are **preserved**, with no re-serialization of the document.
+:::
+
+### Conflict detection
+
+On save, `POST /api/save` compares a **`revision`** (a hash of the opened content) with the
+one on disk. On a mismatch, the API returns **409** **without writing**, and a
+**"This file changed on disk since you opened it"** banner offers **Reload** (load the
+on-disk version) or **Overwrite** (replace it with your version).
 
 ---
 
 ## Schema-driven autocomplete
 
-The editor offers completions from the **binary's schema** (`a4z schema`):
+Completions come from the **binary's schema** (`GET /api/tasks`), so they always match the
+installed version:
 
-- workflow keys and step keys,
-- task types on `uses:`,
-- fields on `with:` depending on the task.
+- **task types** on `uses:`,
+- **fields** on `with:` depending on the task,
+- workflow and step **keys**.
 
-{/* 📸 SCREENSHOT TO ADD — Open autocomplete menu (e.g. the list of task types
-    on `uses:`, or the fields on `with:`).
+{/* 📸 SCREENSHOT TO ADD — Open autocomplete menu (e.g. the list of task types on `uses:`,
+    or the fields on `with:`).
     File: static/img/studio/autocomplete.png
-    Then replace this block with: ![Autocomplete](/img/studio/autocomplete.png) */}
+    Image below (keep this comment): ![Autocomplete](/img/studio/autocomplete.png) */}
+
+![Autocomplete](/img/studio/autocomplete.png)
 
 ---
 
-## Validation & the "Problems" panel
+## Validation & the Problems panel
 
-The content is continuously validated (schema + DAG cycles + warnings for missing
-secrets). Diagnostics appear **inline** (gutter) and in a clickable **Problems
-panel** (jump to line). A **"✓ schema valid"** / **"✕ N error(s)"** indicator
-summarizes the state.
+The content is continuously validated via `POST /api/validate`, which covers:
 
-{/* 📸 SCREENSHOT TO ADD — "Problems" panel with one or two diagnostics, and an
-    error underline in the editor.
+- **YAML parsing**,
+- **schema conformance**,
+- **DAG cycles**,
+- **warnings** (non-blocking) for every **undefined** `${secret:NAME}`.
+
+**Diagnostics** appear **inline** in the gutter and are gathered in a **Problems panel**
+below the editor: a click **jumps to the line**. The codes match those of `a4z lint` (see
+the [CLI reference](../cli-reference)) — for example `A4Z-PARSE-001`, `A4Z-VAL-001`,
+`A4Z-DAG-001` / `A4Z-DAG-002`, `A4Z-SECRET-001`. The **✓ schema valid** / **✕ N error(s)**
+indicator in the file bar summarizes the state.
+
+{/* 📸 SCREENSHOT TO ADD — Problems panel with one or two diagnostics, and an error underline
+    in the editor.
     File: static/img/studio/problems.png
-    Then replace this block with: ![Problems panel](/img/studio/problems.png) */}
+    Image below (keep this comment): ![Problems panel](/img/studio/problems.png) */}
+
+![Problems panel](/img/studio/problems.png)
 
 ---
 
-## DAG view (read-only)
+## Side panel: Topology & Documentation
 
-On the right, the **execution graph** shows the steps and their dependencies
-(including the **implicit sequential dependency**: a step without `needs` depends
-on the previous one). When the text becomes invalid, the **last valid graph** is
-kept with an indication. During a run, each node reflects the task's **live
-status**.
+The right-hand panel offers two tabs.
+
+### Topology
+
+The **DAG** (execution graph), **read-only**: steps, `needs` dependencies, and implicit
+sequential dependencies. During a run, each node reflects the task's **live status**,
+overlaid on the graph.
 
 :::tip Visual editing
-To **modify** the graph (add/remove tasks, draw dependencies), switch to
-[No-code mode](./no-code).
+**Topology** is read-only. To **modify** the graph (add/remove tasks, draw dependencies),
+switch to [No-code mode](./no-code).
 :::
+
+### Documentation
+
+The **Documentation** tab shows the doc for the task **under the cursor**, depending on the
+state:
+
+| State | Display |
+| --- | --- |
+| Cursor outside a task | "Place the cursor inside a task…" |
+| Loading | loading indicator |
+| Unknown type | error message with "Did you mean … ?" |
+| Recognized task | **type** + **summary** + **Parameters** (derived from the schema, required fields flagged) + YAML **Examples** |
+
+:::note Air-gapped
+All documentation comes from the **binary**: no network access is required.
+:::
+
+{/* 📸 SCREENSHOT TO ADD — Documentation panel showing the doc for the task under the cursor
+    (summary + Parameters section).
+    File: static/img/studio/doc-panel.png
+    Image below (keep this comment): ![Documentation panel](/img/studio/doc-panel.png) */}
+
+![Documentation panel](/img/studio/doc-panel.png)

@@ -5,63 +5,119 @@ title: Exécution & suivi
 
 # Exécuter un workflow
 
-Depuis l'éditeur, le **panneau d'exécution** permet de lancer le workflow ouvert
-**in-process** (sans sous-processus `a4z`).
+Le lancement d'un workflow ne se fait **pas** depuis un panneau dédié de l'éditeur.
+Il se pilote depuis l'**en-tête du workflow** (la barre d'onglets **Overview /
+Topology / Executions / Editor**), qui reste visible et actionnable **quel que soit
+l'onglet ouvert**. On y trouve le bouton **Run**, le bouton **Stop** pendant
+l'exécution, et un **badge d'état**.
 
-{/* 📸 CAPTURE À AJOUTER — Panneau d'exécution avec le bouton Exécuter et, le cas échéant,
-    le formulaire des paramètres requis.
+Les runs s'exécutent **in-process** (aucun sous-process `a4z`) et sont enregistrés
+avec le déclencheur `trigger = studio`.
+
+| Badge | Signification |
+| --- | --- |
+| **Running…** | Le run est en cours. |
+| **✓ Succeeded** | Le run s'est terminé avec succès. |
+| **✕ Failed** | Le run a échoué. |
+| **⊘ Cancelled** | Le run a été annulé (via **Stop**). |
+
+{/* 📸 CAPTURE À AJOUTER — En-tête du workflow (barre d'onglets Overview/Topology/Executions/Editor)
+    avec le bouton Run et le badge d'état ; montrer que le lancement se fait ici, pas dans l'éditeur.
     Fichier : static/img/studio/run-panel.png
-    Puis remplacer ce bloc par : ![Panneau d'exécution](/img/studio/run-panel.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![Panneau d'exécution](/img/studio/run-panel.png) */}
+
+![Panneau d'exécution](/img/studio/run-panel.png)
 
 ---
 
-## Refus & paramètres
+## Lancer & arrêter
 
-Avant de lancer, le serveur vérifie :
+Le bouton **Run** est **désactivé tant que le schéma du workflow est invalide** ;
+l'infobulle indique alors *« Fix the errors before running »*. Corrigez les erreurs
+signalées dans l'[éditeur](./editeur) (ou le mode [no-code](./no-code)) pour le
+réactiver.
 
-- **workflow invalide** → l'exécution est refusée et les erreurs sont pointées ;
-- **paramètres requis manquants** → un **formulaire** demande les valeurs (`inputs`) ;
-- **secret `${secret:NOM}` non défini** → l'exécution est refusée.
+Un clic sur **Run** **bascule automatiquement sur l'onglet Executions** et démarre le
+run — **sauf** si des entrées ou des credentials sont requis : un **formulaire** prend
+alors le relais avant tout lancement (voir ci-dessous).
 
-{/* 📸 CAPTURE À AJOUTER — Formulaire des paramètres requis (un ou deux champs `inputs`).
+Pendant l'exécution, le bouton **Stop** demande une **confirmation « Force stop? »**
+avant d'interrompre le run (`POST /api/runs/{id}/cancel`). Le badge passe alors à
+**⊘ Cancelled**.
+
+:::info Où cliquer
+**Run** et **Stop** vivent dans l'**en-tête du workflow**, pas dans l'éditeur. Vous
+pouvez donc lancer et suivre un run tout en restant sur l'onglet **Editor**,
+**Topology** ou **Overview**.
+:::
+
+---
+
+## Refus & formulaires avant lancement
+
+Au démarrage (`POST /api/runs`), le serveur **valide et complète** la demande **avant**
+de lancer le moteur. Selon le cas :
+
+| Situation | Comportement |
+| --- | --- |
+| **Workflow invalide** | Run **refusé** ; les diagnostics sont renvoyés. |
+| **Entrées requises manquantes** | Un **formulaire d'inputs** s'affiche (`enum` → **select**, sinon champ **texte**). |
+| **Secret `${secret:NOM}` non défini** | Run **refusé** : définissez d'abord le secret (voir [Secrets](./secrets)). |
+| **Credentials z/OS manquants** | Un **formulaire user / mot de passe** est présenté. |
+
+Les **credentials z/OS** ne sont demandés **que si le profil ne les fournit pas déjà**.
+Ils sont **utilisés une seule fois** pour ce run et **jamais stockés**. Dans les logs,
+les **mots de passe sont masqués** ; les **usernames** restent visibles.
+
+{/* 📸 CAPTURE À AJOUTER — Formulaire des paramètres requis (inputs) présenté avant lancement,
+    avec un champ select (enum) et/ou un champ texte.
     Fichier : static/img/studio/run-inputs.png
-    Puis remplacer ce bloc par : ![Formulaire des paramètres](/img/studio/run-inputs.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![Formulaire des paramètres](/img/studio/run-inputs.png) */}
+
+![Formulaire des paramètres](/img/studio/run-inputs.png)
 
 ---
 
 ## Suivi en direct
 
-Une fois lancé, le **suivi en direct** consomme le flux d'événements **NDJSON** du moteur
-et affiche le cycle de vie au fil de l'eau :
+Une fois lancé, le run se suit dans l'onglet **Executions**. Le flux d'événements
+**NDJSON** du moteur est diffusé via le WebSocket `/ws/runs/{id}` et alimente en temps
+réel :
 
-- statut par tâche, **RC** (return/condition code), progression `n/total`, durées ;
-- **logs défilants** (avec masquage des secrets hérité du flux) ;
-- statut final + **RC global**.
+- des **logs défilants** ;
+- une **Timeline (Gantt)** dont le repère **« now »** avance au fil de l'exécution ;
+- la **vue DAG** de l'onglet **Topology**, qui reflète le **statut par nœud en direct**
+  (en cours / réussi / échoué / annulé / ignoré).
 
-La **vue DAG reflète le statut par nœud en direct** (succès / échec / annulé / ignoré /
-en cours), et un **diagramme de Gantt** se met à jour avec un repère « maintenant »
-(voir [Historique & Gantt](./historique)).
+À la fin du run, l'historique se recharge et le run terminé est **auto-sélectionné**.
+La rétention d'historique s'applique après chaque run (voir [Paramètres](./settings)).
 
-{/* 📸 CAPTURE À AJOUTER — Vue d'exécution en direct : liste des tâches avec statuts/RC
-    et logs ; idéalement avec le DAG coloré par statut au-dessus.
+{/* 📸 CAPTURE À AJOUTER — Suivi en direct dans l'onglet Executions : logs défilants,
+    Timeline avec le repère « now », et statuts de nœuds en direct (DAG/Topology).
     Fichier : static/img/studio/run-live.png
-    Puis remplacer ce bloc par : ![Suivi en direct](/img/studio/run-live.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![Suivi en direct](/img/studio/run-live.png) */}
+
+![Suivi en direct](/img/studio/run-live.png)
+
+:::tip Détail complet
+La Timeline, les tâches et les logs restent consultables après coup dans
+l'[historique](./historique), avec la reprise sur incident.
+:::
 
 ---
 
 ## Résultats & artefacts
 
-À la fin du run, les **sorties par tâche** et les **artefacts** produits (fichiers détectés
-dans l'espace de travail, ex. une archive) apparaissent avec des **liens de téléchargement**
-— y compris pour un run en échec (sorties partielles consultables).
+À la fin du run, les **sorties par tâche** et la section **Artifacts** apparaissent dans
+le détail. Les **artefacts** sont les fichiers détectés dans l'espace de travail
+(ex. une archive) et sont proposés avec des **liens de téléchargement**.
 
-Si le workflow déclare un bloc `outputs:`, ses **outputs de niveau workflow**
-résolus apparaissent dans un bloc **Outputs** en fin de suivi (clés triées,
-valeurs de secrets masquées). Voir
-[Outputs du workflow](../workflow-spec/05-outputs-defaults.mdx) pour la déclaration ;
-ils sont aussi consultables plus tard depuis l'onglet **Outputs** de
-l'[historique](./03-historique.mdx#onglet-outputs).
+Ces éléments restent consultables **même pour un run en échec** : les sorties
+partielles produites avant l'incident sont conservées.
 
-{/* 📸 CAPTURE À AJOUTER — Section Artefacts avec un ou plusieurs liens de téléchargement.
+{/* 📸 CAPTURE À AJOUTER — Section Artifacts du détail de run, avec un ou plusieurs liens
+    de téléchargement.
     Fichier : static/img/studio/run-artifacts.png
-    Puis remplacer ce bloc par : ![Artefacts](/img/studio/run-artifacts.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![Artefacts](/img/studio/run-artifacts.png) */}
+
+![Artefacts](/img/studio/run-artifacts.png)

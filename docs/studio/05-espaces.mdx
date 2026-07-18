@@ -6,23 +6,28 @@ title: Espaces de travail
 # Multi-espaces de travail
 
 Studio peut gérer **plusieurs espaces de travail** (dossiers de workflows) dans une même
-session. Le **sélecteur d'espace** dans l'en-tête permet de **basculer** entre eux et d'en
-**ouvrir** un nouveau par **chemin local**.
+session. Le **sélecteur d'espace** — au **centre de l'en-tête** — permet de **basculer**
+entre les espaces ouverts et d'en **ouvrir** un nouveau par **chemin local**.
 
 {/* 📸 CAPTURE À AJOUTER — Sélecteur d'espace ouvert : liste des espaces + le champ
     « ouvrir un espace par chemin ».
     Fichier : static/img/studio/workspaces.png
-    Puis remplacer ce bloc par : ![Sélecteur d'espace](/img/studio/workspaces.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![Sélecteur d'espace](/img/studio/workspaces.png) */}
+
+![Sélecteur d'espace](/img/studio/workspaces.png)
 
 ---
 
 ## Ouvrir & basculer
 
+Le sélecteur est un **menu des espaces ouverts** (listés **par nom**), accompagné d'un
+bouton **+** pour en ouvrir un nouveau.
+
 - L'espace de **lancement** (`--workspace`, ou le répertoire courant) est l'espace `default`.
-- Le bouton **+** ouvre un champ pour saisir un **chemin de dossier** ; le serveur vérifie
-  qu'il existe puis l'ajoute et bascule dessus.
-- **Basculer** réinitialise le document ouvert et **recharge la liste des workflows** (et les
-  exécutions si la vue est ouverte).
+- Le bouton **+** ouvre un champ pour saisir un **chemin de dossier local** ; le serveur
+  vérifie qu'il existe (`POST /api/workspaces`), puis l'ajoute et bascule dessus.
+- **Basculer** d'espace **réinitialise le document ouvert** et **recharge la liste des
+  workflows** (ainsi que l'historique si la vue des [exécutions](./historique) est ouverte).
 
 :::note Pourquoi un chemin ?
 Le navigateur ne peut pas ouvrir un sélecteur de dossier local. Comme `a4z serve` est lié à
@@ -34,15 +39,19 @@ son chemin**.
 
 ## Cloisonnement
 
+Chaque espace de travail est **isolé** : ce qu'il contient et produit lui est propre.
+
 | Élément | Cloisonné par espace ? |
 |--------|------------------------|
 | **Découverte** (liste des workflows) | ✅ oui |
 | **Lecture / sauvegarde** des fichiers | ✅ oui |
-| **Exécutions** (historique, Gantt, reprise) | ✅ oui (une base `.automate4z/runs.db` par espace) |
+| **Exécutions** (historique, Gantt, reprise) | ✅ oui — une base `.automate4z/runs.db` par espace |
 | **Artefacts** | ✅ oui |
-| **Secrets** | ⚠️ **non** — globaux (trousseau de la machine) |
+| **Favoris** ([Dashboard](./dashboard)) | ✅ oui |
+| **Secrets** | ⚠️ **non** — globaux (trousseau de la machine, voir [Secrets](./secrets)) |
 
 :::info Secrets globaux
 Les secrets vivent dans le **trousseau de l'OS** (par machine), partagés entre les espaces :
 un identifiant (token z/OS, etc.) est généralement commun aux projets d'un même utilisateur.
+Voir [Secrets](./secrets).
 :::

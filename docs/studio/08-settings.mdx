@@ -1,0 +1,107 @@
+---
+sidebar_position: 8
+title: Réglages & profils
+---
+
+# Réglages & profils
+
+Le panneau **Settings** (barre latérale) gère la configuration de Studio sous forme de
+**profils**. Chaque profil est un fichier `~/.automate4z/profiles/<name>.yml`. Le panneau est
+découpé en sections — **Studio**, **History**, **AI**, **Notify** — et chaque section
+**s'enregistre indépendamment** : sauvegarder l'une **préserve** les sections que vous n'avez
+pas touchées.
+
+{/* 📸 CAPTURE À AJOUTER — le panneau Settings : sélecteur de profil + sections Studio / History / AI.
+    Fichier : static/img/studio/settings.png
+    Image ci-dessous (ce commentaire est conservé) : ![Panneau Settings](/img/studio/settings.png) */}
+
+![Panneau Settings](/img/studio/settings.png)
+
+---
+
+## Profils
+
+En haut du panneau, le **sélecteur de profil** liste les profils disponibles ; **+ New profile**
+en crée un (nom contraint par `^[A-Za-z0-9._-]+$`).
+
+Changer de profil applique sa configuration **à chaud** — sans redémarrer le binaire. Par
+exemple, la rétention d'historique est **relue à chaque run** : basculer de profil suffit à
+changer le comportement du prochain lancement.
+
+---
+
+## Studio
+
+Une case à cocher : **« Save the workflow before running it »**.
+
+Un run exécute **toujours le fichier sur disque**. Quand l'option est activée, Studio
+**enregistre d'abord** les modifications non sauvegardées avant de lancer. Si cette sauvegarde
+**échoue**, le démarrage est **annulé** — on n'exécute jamais une version partielle ou périmée.
+
+:::note Toujours le disque
+Même désactivée, l'option ne change pas ce qui est exécuté : c'est **le fichier sur disque**.
+Elle décide seulement si Studio sauvegarde vos modifications en attente **avant** le run.
+:::
+
+---
+
+## History
+
+Un champ : **Runs to keep** — la rétention de la base d'exécutions `runs.db`.
+
+La valeur **`0` signifie illimité** (aucun élagage). Toute autre valeur borne le nombre
+d'exécutions conservées ; ce réglage est relu à chaque run — voir l'[historique](./historique).
+
+---
+
+## AI
+
+Configure les endpoints LLM utilisés par la tâche **`ai-prompt`**.
+
+| Réglage | Détail |
+|---------|--------|
+| **Enabled** | Active (ou non) la résolution des endpoints IA. |
+| **Context files policy** | `free` (fichiers de contexte transmis tels quels) ou `anonymized-only` (contexte anonymisé exigé). |
+| **Max context (bytes)** | Plafond de taille du contexte envoyé au modèle. |
+
+En dessous, une **table d'endpoints** :
+
+| Colonne | Détail |
+|---------|--------|
+| **Name** | Nom logique de l'endpoint (référencé par la tâche `ai-prompt`). |
+| **Provider** | `openai-compatible`, `anthropic`, `openai` ou `gemini`. |
+| **Base URL** | Active **uniquement** pour `openai-compatible` ; ignorée pour les autres providers. |
+| **API key** | Une **référence** `${secret:NOM}`, jamais une valeur littérale — voir [Secrets](./secrets). |
+| **Models** | Liste de modèles, séparés par des virgules. |
+
+:::warning Jamais de clé en clair
+Le champ **API key** attend une **référence** de secret (`${secret:NOM}`), pas la valeur de la
+clé. Stockez la clé dans le panneau [Secrets](./secrets), puis référencez-la ici.
+:::
+
+---
+
+## Notify
+
+Définit les valeurs par défaut de la tâche **`notify`**.
+
+**SMTP** :
+
+| Champ | Détail |
+|-------|--------|
+| **Host** | Serveur SMTP. |
+| **Port** | Port SMTP. |
+| **User** | Compte d'authentification. |
+| **TLS** | `none`, `starttls` ou `tls`. |
+| **From** | Adresse d'expédition. |
+| **Password** | Mot de passe SMTP — champ **write-only**. |
+
+**Webhook** : une **default URL** utilisée quand la tâche `notify` n'en précise pas.
+
+---
+
+## Voir aussi
+
+- [Secrets](./secrets) — stocker les clés référencées par les sections AI et Notify.
+- [Historique des exécutions](./historique) — ce que borne le réglage **Runs to keep**.
+- [Référence CLI](../cli-reference) — profils et configuration hors interface.
