@@ -1,0 +1,106 @@
+---
+sidebar_position: 8
+title: Settings & profiles
+---
+
+# Settings & profiles
+
+The **Settings** panel (sidebar) manages Studio's configuration as **profiles**. Each profile is
+a `~/.automate4z/profiles/<name>.yml` file. The panel is split into sections — **Studio**,
+**History**, **AI**, **Notify** — and each section **saves independently**: saving one
+**preserves** the sections you did not touch.
+
+{/* 📸 SCREENSHOT TO ADD — the Settings panel: profile selector + Studio / History / AI sections.
+    File: static/img/studio/settings.png
+    Image below (keep this comment): ![Settings panel](/img/studio/settings.png) */}
+
+![Settings panel](/img/studio/settings.png)
+
+---
+
+## Profiles
+
+At the top of the panel, the **profile selector** lists the available profiles; **+ New profile**
+creates one (name constrained by `^[A-Za-z0-9._-]+$`).
+
+Switching profile applies its configuration **live** — without restarting the binary. For
+example, history retention is **re-read on every run**: switching profile is enough to change the
+next launch's behavior.
+
+---
+
+## Studio
+
+One checkbox: **"Save the workflow before running it"**.
+
+A run **always executes the file on disk**. When the option is enabled, Studio **saves** any
+unsaved changes first, before launching. If that save **fails**, the start is **cancelled** — a
+partial or stale version is never executed.
+
+:::note Always the disk
+Even when disabled, the option does not change what runs: it is **the file on disk**. It only
+decides whether Studio saves your pending changes **before** the run.
+:::
+
+---
+
+## History
+
+One field: **Runs to keep** — the retention of the `runs.db` execution store.
+
+The value **`0` means unlimited** (no pruning). Any other value caps the number of executions
+kept; this setting is re-read on every run — see [history](./historique).
+
+---
+
+## AI
+
+Configures the LLM endpoints used by the **`ai-prompt`** task.
+
+| Setting | Detail |
+|---------|--------|
+| **Enabled** | Turns AI endpoint resolution on or off. |
+| **Context files policy** | `free` (context files passed as-is) or `anonymized-only` (anonymized context required). |
+| **Max context (bytes)** | Size cap for the context sent to the model. |
+
+Below, an **endpoints table**:
+
+| Column | Detail |
+|--------|--------|
+| **Name** | Logical endpoint name (referenced by the `ai-prompt` task). |
+| **Provider** | `openai-compatible`, `anthropic`, `openai` or `gemini`. |
+| **Base URL** | Active **only** for `openai-compatible`; ignored for other providers. |
+| **API key** | A **reference** `${secret:NAME}`, never a literal value — see [Secrets](./secrets). |
+| **Models** | A comma-separated list of models. |
+
+:::warning Never a plaintext key
+The **API key** field expects a secret **reference** (`${secret:NAME}`), not the key value. Store
+the key in the [Secrets](./secrets) panel, then reference it here.
+:::
+
+---
+
+## Notify
+
+Sets the default values for the **`notify`** task.
+
+**SMTP**:
+
+| Field | Detail |
+|-------|--------|
+| **Host** | SMTP server. |
+| **Port** | SMTP port. |
+| **User** | Authentication account. |
+| **TLS** | `none`, `starttls` or `tls`. |
+| **From** | Sender address. |
+| **Password** | SMTP password — a **write-only** field. |
+
+**Webhook**: a **default URL** used when the `notify` task does not specify one.
+
+---
+
+## See also
+
+- [Secrets](./secrets) — store the keys referenced by the AI and Notify sections.
+- [Run history](./historique) — what the **Runs to keep** setting caps.
+- [CLI reference](../cli-reference) — profiles and configuration outside the interface.

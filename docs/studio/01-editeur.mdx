@@ -5,64 +5,126 @@ title: Éditeur de workflow
 
 # Éditeur de workflow (mode Code)
 
-Le mode **Code** présente l'éditeur YAML à gauche et la **vue DAG** (graphe d'exécution)
-en lecture seule à droite.
+Le mode **Code** présente l'éditeur YAML à gauche et un **volet latéral à deux onglets**
+(**Topology** / **Documentation**) à droite. Un **split redimensionnable** sépare les deux.
 
-{/* 📸 CAPTURE À AJOUTER — Vue scindée : éditeur CodeMirror à gauche, DAG à droite,
-    avec l'indicateur « ✓ schéma valide » et l'état « Saved / ● Modified ».
+En haut, la **barre de fichier** regroupe la bascule **Code / No-code**, l'indicateur de
+validité **✓ schema valid** / **✕ N error(s)**, l'état d'enregistrement **● Modified** /
+**Saved** (et **Saving…** pendant l'écriture) et le bouton **Save** (désactivé tant que le
+fichier n'est pas modifié). Le raccourci **Ctrl/Cmd-S** enregistre.
+
+{/* 📸 CAPTURE À AJOUTER — Onglet Editor : CodeMirror à gauche, DAG Topology à droite,
+    avec les indicateurs ✓ schema valid et Saved dans la barre de fichier.
     Fichier : static/img/studio/editor-split.png
-    Puis remplacer ce bloc par : ![Éditeur + DAG](/img/studio/editor-split.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![Éditeur + DAG Topology](/img/studio/editor-split.png) */}
+
+![Éditeur + DAG Topology](/img/studio/editor-split.png)
 
 ---
 
 ## Édition
 
-- **CodeMirror 6** avec coloration YAML, numéros de ligne et pliage.
-- Les références **`${secret:NOM}`** (ambre) et **`${{ … }}`** (violet) sont mises en
-  évidence pour les distinguer du reste.
-- **Ctrl/Cmd-S** enregistre. L'écriture est **verbatim** (vos commentaires, l'ordre et le
-  style sont préservés). Une **détection de conflit** prévient si le fichier a changé sur
-  le disque depuis l'ouverture (bandeau **Recharger / Écraser**).
+L'éditeur est bâti sur **CodeMirror 6** : numéros de ligne, **pliage** (folding) et
+**historique** d'annulation/rétablissement.
+
+La **coloration** distingue les clés, les chaînes (vert), les nombres et booléens (ambre)
+et les commentaires (gris, italique). Deux formes de références sont **surlignées** pour
+les repérer d'un coup d'œil :
+
+| Référence | Rôle | Surlignage |
+| --- | --- | --- |
+| `${secret:…}` | Secret injecté au run (voir [Secrets](./secrets)) | **ambre gras** |
+| `${{ … }}` | Expression évaluée | **violet** |
+
+:::info Écriture verbatim
+La sauvegarde (`Save` ou **Ctrl/Cmd-S**) est **atomique** et **verbatim** : vos commentaires,
+l'ordre des clés et le style sont **préservés**, sans re-sérialisation du document.
+:::
+
+### Détection de conflit
+
+À l'enregistrement, `POST /api/save` compare une **`revision`** (hash du contenu ouvert) à
+celle du fichier sur disque. En cas de divergence, l'API répond **409** **sans écrire** et
+un bandeau **« This file changed on disk since you opened it »** propose **Reload** (recharger
+la version disque) ou **Overwrite** (écraser avec votre version).
 
 ---
 
 ## Autocomplétion guidée par le schéma
 
-L'éditeur propose des complétions issues du **schéma du binaire** (`a4z schema`) :
+Les complétions proviennent du **schéma du binaire** (`GET /api/tasks`), donc toujours
+alignées sur la version installée :
 
-- clés du workflow et clés de step,
-- types de tâches sur `uses:`,
-- champs sur `with:` selon la tâche.
+- les **types de tâches** sur `uses:`,
+- les **champs** sur `with:` selon la tâche,
+- les **clés** de workflow et de step.
 
 {/* 📸 CAPTURE À AJOUTER — Menu d'autocomplétion ouvert (ex. liste des types de tâches
     sur `uses:`, ou des champs sur `with:`).
     Fichier : static/img/studio/autocomplete.png
-    Puis remplacer ce bloc par : ![Autocomplétion](/img/studio/autocomplete.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![Autocomplétion](/img/studio/autocomplete.png) */}
+
+![Autocomplétion](/img/studio/autocomplete.png)
 
 ---
 
-## Validation & panneau « Problèmes »
+## Validation & panneau Problems
 
-Le contenu est validé en continu (schéma + cycles du DAG + avertissements sur les secrets
-absents). Les diagnostics apparaissent **en ligne** (gouttière) et dans un **panneau
-Problèmes** cliquable (saut à la ligne). Un indicateur **« ✓ schéma valide »** /
-**« ✕ N erreur(s) »** résume l'état.
+Le contenu est validé en continu via `POST /api/validate`, qui couvre :
 
-{/* 📸 CAPTURE À AJOUTER — Panneau « Problèmes » avec un ou deux diagnostics, et un
-    soulignement d'erreur dans l'éditeur.
+- l'**analyse YAML** (parse),
+- la **conformité au schéma**,
+- les **cycles du DAG**,
+- des **avertissements** (non bloquants) pour chaque `${secret:NOM}` **non défini**.
+
+Les **diagnostics** apparaissent **en ligne** dans la gouttière et sont regroupés dans un
+**panneau Problems** sous l'éditeur : un clic **saute à la ligne** concernée. Les codes sont
+alignés sur ceux de `a4z lint` (voir la [référence CLI](../cli-reference)) — par exemple
+`A4Z-PARSE-001`, `A4Z-VAL-001`, `A4Z-DAG-001` / `A4Z-DAG-002`, `A4Z-SECRET-001`. L'indicateur
+**✓ schema valid** / **✕ N error(s)** de la barre de fichier résume l'état.
+
+{/* 📸 CAPTURE À AJOUTER — Panneau Problems avec un ou deux diagnostics, et un soulignement
+    d'erreur dans l'éditeur.
     Fichier : static/img/studio/problems.png
-    Puis remplacer ce bloc par : ![Panneau Problèmes](/img/studio/problems.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![Panneau Problems](/img/studio/problems.png) */}
+
+![Panneau Problems](/img/studio/problems.png)
 
 ---
 
-## Vue DAG (lecture seule)
+## Volet latéral : Topology & Documentation
 
-À droite, le **graphe d'exécution** affiche les steps et leurs dépendances (y compris la
-**dépendance séquentielle implicite** : un step sans `needs` dépend du précédent). Quand
-le texte devient invalide, le **dernier graphe valide** est conservé avec une indication.
-Pendant une exécution, chaque nœud reflète le **statut en direct** de la tâche.
+Le volet de droite offre deux onglets.
+
+### Topology
+
+Le **DAG** (graphe d'exécution) en **lecture seule** : steps, dépendances `needs` et
+dépendances séquentielles implicites. Pendant une exécution, chaque nœud reflète le
+**statut en direct** de la tâche, superposé au graphe.
 
 :::tip Édition visuelle
-Pour **modifier** le graphe (ajouter/supprimer des tâches, tracer des dépendances),
-basculez en [mode No-code](./no-code).
+La **Topology** est en lecture seule. Pour **modifier** le graphe (ajouter/supprimer des
+tâches, tracer des dépendances), basculez en [mode No-code](./no-code).
 :::
+
+### Documentation
+
+L'onglet **Documentation** affiche la doc de la tâche **sous le curseur**, selon l'état :
+
+| État | Affichage |
+| --- | --- |
+| Curseur hors d'une tâche | « Place the cursor inside a task… » |
+| Chargement | indicateur de chargement |
+| Type inconnu | message d'erreur avec « Did you mean … ? » |
+| Tâche reconnue | **type** + **résumé** + **Parameters** (dérivés du schéma, champs requis signalés) + **Examples** YAML |
+
+:::note Air-gap
+Toute la documentation provient du **binaire** : aucun accès réseau n'est requis.
+:::
+
+{/* 📸 CAPTURE À AJOUTER — Volet Documentation montrant la doc d'une tâche sous le curseur
+    (résumé + section Parameters).
+    Fichier : static/img/studio/doc-panel.png
+    Image ci-dessous (ce commentaire est conservé) : ![Volet Documentation](/img/studio/doc-panel.png) */}
+
+![Volet Documentation](/img/studio/doc-panel.png)

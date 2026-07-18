@@ -6,24 +6,29 @@ title: Workspaces
 # Multiple workspaces
 
 Studio can manage **several workspaces** (folders of workflows) within a single
-session. The **workspace switcher** in the header lets you **switch** between them
-and **open** a new one by **local path**.
+session. The **workspace switcher** — in the **center of the header** — lets you
+**switch** between open workspaces and **open** a new one by **local path**.
 
 {/* 📸 SCREENSHOT TO ADD — Open workspace switcher: list of workspaces + the
     "open a workspace by path" field.
     File: static/img/studio/workspaces.png
-    Then replace this block with: ![Workspace switcher](/img/studio/workspaces.png) */}
+    Image below (keep this comment): ![Workspace switcher](/img/studio/workspaces.png) */}
+
+![Workspace switcher](/img/studio/workspaces.png)
 
 ---
 
 ## Open & switch
 
+The switcher is a **menu of open workspaces** (listed **by name**), alongside a **+**
+button to open a new one.
+
 - The **launch** workspace (`--workspace`, or the current directory) is the
   `default` workspace.
-- The **+** button opens a field to enter a **folder path**; the server checks
-  that it exists, then adds it and switches to it.
-- **Switching** resets the open document and **reloads the workflow list** (and
-  the executions if that view is open).
+- The **+** button opens a field to enter a **local folder path**; the server checks
+  that it exists (`POST /api/workspaces`), then adds it and switches to it.
+- **Switching** workspaces **resets the open document** and **reloads the workflow
+  list** (and the history if the [executions](./historique) view is open).
 
 :::note Why a path?
 The browser cannot open a local folder picker. Since `a4z serve` is bound to
@@ -35,15 +40,19 @@ The browser cannot open a local folder picker. Since `a4z serve` is bound to
 
 ## Isolation
 
+Each workspace is **isolated**: what it contains and produces is its own.
+
 | Item | Isolated per workspace? |
 |------|-------------------------|
 | **Discovery** (workflow list) | ✅ yes |
 | **Read / save** of files | ✅ yes |
-| **Executions** (history, Gantt, resume) | ✅ yes (one `.automate4z/runs.db` per workspace) |
+| **Executions** (history, Gantt, resume) | ✅ yes — one `.automate4z/runs.db` per workspace |
 | **Artifacts** | ✅ yes |
-| **Secrets** | ⚠️ **no** — global (machine keychain) |
+| **Favorites** ([Dashboard](./dashboard)) | ✅ yes |
+| **Secrets** | ⚠️ **no** — global (machine keychain, see [Secrets](./secrets)) |
 
 :::info Global secrets
 Secrets live in the **OS keychain** (per machine), shared across workspaces: a
-credential (z/OS token, etc.) is usually common to a user's projects.
+credential (z/OS token, etc.) is usually common to a user's projects. See
+[Secrets](./secrets).
 :::

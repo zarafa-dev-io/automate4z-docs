@@ -5,56 +5,114 @@ title: Execution & monitoring
 
 # Run a workflow
 
-From the editor, the **run panel** lets you launch the open workflow
-**in-process** (no `a4z` subprocess).
+Running a workflow is **not** done from a dedicated panel in the editor. It is driven
+from the **workflow header** (the **Overview / Topology / Executions / Editor** tab
+bar), which stays visible and actionable **whatever tab is open**. It hosts the **Run**
+button, the **Stop** button while a run is in progress, and a **status badge**.
 
-{/* 📸 SCREENSHOT TO ADD — Run panel with the Run button and, where applicable,
-    the required-parameters form.
+Runs execute **in-process** (no `a4z` subprocess) and are recorded with
+`trigger = studio`.
+
+| Badge | Meaning |
+| --- | --- |
+| **Running…** | The run is in progress. |
+| **✓ Succeeded** | The run completed successfully. |
+| **✕ Failed** | The run failed. |
+| **⊘ Cancelled** | The run was cancelled (via **Stop**). |
+
+{/* 📸 SCREENSHOT TO ADD — Workflow header (Overview/Topology/Executions/Editor tab bar)
+    with the Run button and the status badge; show that launching happens here, not in the editor.
     File: static/img/studio/run-panel.png
-    Then replace this block with: ![Run panel](/img/studio/run-panel.png) */}
+    Image below (keep this comment): ![Run panel](/img/studio/run-panel.png) */}
+
+![Run panel](/img/studio/run-panel.png)
 
 ---
 
-## Refusals & parameters
+## Launch & stop
 
-Before launching, the server checks:
+The **Run** button is **disabled while the workflow schema is invalid**; the tooltip
+then reads *"Fix the errors before running"*. Fix the reported errors in the
+[editor](./editeur) (or [no-code](./no-code) mode) to re-enable it.
 
-- **invalid workflow** → the run is refused and the errors are pointed out;
-- **missing required parameters** → a **form** prompts for the values (`inputs`);
-- **undefined `${secret:NAME}`** → the run is refused.
+Clicking **Run** **automatically switches to the Executions tab** and starts the run —
+**unless** inputs or credentials are required: a **form** then takes over before any
+launch (see below).
 
-{/* 📸 SCREENSHOT TO ADD — Required-parameters form (one or two `inputs` fields).
+While a run is in progress, the **Stop** button asks for a **"Force stop?"**
+confirmation before interrupting the run (`POST /api/runs/{id}/cancel`). The badge then
+switches to **⊘ Cancelled**.
+
+:::info Where to click
+**Run** and **Stop** live in the **workflow header**, not in the editor. You can launch
+and monitor a run while staying on the **Editor**, **Topology** or **Overview** tab.
+:::
+
+---
+
+## Refusals & pre-launch forms
+
+On start (`POST /api/runs`), the server **validates and completes** the request
+**before** launching the engine. Depending on the case:
+
+| Situation | Behavior |
+| --- | --- |
+| **Invalid workflow** | Run **refused**; diagnostics are returned. |
+| **Missing required inputs** | An **inputs form** appears (`enum` → **select**, otherwise **text** field). |
+| **Undefined `${secret:NAME}`** | Run **refused**: define the secret first (see [Secrets](./secrets)). |
+| **Missing z/OS credentials** | A **user / password form** is presented. |
+
+**z/OS credentials** are requested **only if the profile does not already provide
+them**. They are **used once** for that run and **never stored**. In the logs,
+**passwords are masked**; **usernames** stay visible.
+
+{/* 📸 SCREENSHOT TO ADD — Required-parameters (inputs) form presented before launch,
+    with a select field (enum) and/or a text field.
     File: static/img/studio/run-inputs.png
-    Then replace this block with: ![Parameters form](/img/studio/run-inputs.png) */}
+    Image below (keep this comment): ![Required-parameters form](/img/studio/run-inputs.png) */}
+
+![Required-parameters form](/img/studio/run-inputs.png)
 
 ---
 
 ## Live monitoring
 
-Once launched, **live monitoring** consumes the engine's **NDJSON** event stream
-and shows the lifecycle as it happens:
+Once launched, the run is monitored in the **Executions** tab. The engine's **NDJSON**
+event stream is delivered over the `/ws/runs/{id}` WebSocket and feeds, in real time:
 
-- per-task status, **RC** (return/condition code), `n/total` progress, durations;
-- **scrolling logs** (with secret masking inherited from the stream);
-- final status + **overall RC**.
+- **scrolling logs**;
+- a **Timeline (Gantt)** whose **"now"** marker advances as the run proceeds;
+- the **DAG view** in the **Topology** tab, which reflects each **node's live status**
+  (running / succeeded / failed / cancelled / skipped).
 
-The **DAG view reflects each node's live status** (success / failure / cancelled /
-skipped / running), and a **Gantt chart** updates with a "now" marker (see
-[History & Gantt](./historique)).
+When the run finishes, history reloads and the completed run is **auto-selected**.
+History retention applies after each run (see [Settings](./settings)).
 
-{/* 📸 SCREENSHOT TO ADD — Live run view: task list with statuses/RC and logs;
-    ideally with the status-colored DAG above.
+{/* 📸 SCREENSHOT TO ADD — Live monitoring in the Executions tab: scrolling logs,
+    Timeline with the "now" marker, and live node statuses (DAG/Topology).
     File: static/img/studio/run-live.png
-    Then replace this block with: ![Live monitoring](/img/studio/run-live.png) */}
+    Image below (keep this comment): ![Live run](/img/studio/run-live.png) */}
+
+![Live run](/img/studio/run-live.png)
+
+:::tip Full detail
+The Timeline, tasks and logs remain viewable afterwards in the [history](./historique),
+including resume after failure.
+:::
 
 ---
 
 ## Results & artifacts
 
-When the run finishes, the **per-task outputs** and the produced **artifacts**
-(files detected in the workspace, e.g. an archive) appear with **download links**
-— including for a failed run (partial outputs remain viewable).
+When the run finishes, the **per-task outputs** and the **Artifacts** section appear in
+the run detail. **Artifacts** are files detected in the workspace (e.g. an archive) and
+are offered with **download links**.
 
-{/* 📸 SCREENSHOT TO ADD — Artifacts section with one or more download links.
+These remain viewable **even for a failed run**: partial outputs produced before the
+failure are kept.
+
+{/* 📸 SCREENSHOT TO ADD — Artifacts section of the run detail, with one or more download links.
     File: static/img/studio/run-artifacts.png
-    Then replace this block with: ![Artifacts](/img/studio/run-artifacts.png) */}
+    Image below (keep this comment): ![Artifacts](/img/studio/run-artifacts.png) */}
+
+![Artifacts](/img/studio/run-artifacts.png)

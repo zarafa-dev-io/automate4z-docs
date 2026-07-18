@@ -1,0 +1,109 @@
+---
+sidebar_position: 1.5
+title: Tableau de bord
+---
+
+# Tableau de bord
+
+Le **Dashboard** est la **vue d'accueil** de Studio, affichée par défaut à l'ouverture.
+C'est un **overview global**, tous workflows confondus, sur une **fenêtre temporelle** :
+taux de réussite, volumes d'exécutions, tendances et derniers runs, en un coup d'œil.
+
+Il occupe l'entrée **Dashboard** de la barre latérale (**Dashboard / Workflows /
+Exécutions / Secrets / Settings**, introduite dans [Vue d'ensemble](./overview)). Pour le
+**détail** d'un run précis, ouvrez l'[historique des exécutions](./historique).
+
+{/* 📸 CAPTURE À AJOUTER — le Dashboard : barre latérale visible, les 4 tuiles KPI,
+    la timeline combinée + le donut, et les tables « Last executions » et « Favorites ».
+    Fichier : static/img/studio/dashboard.png
+    Image ci-dessous (ce commentaire est conservé) : ![Le Dashboard de Studio](/img/studio/dashboard.png) */}
+
+![Le Dashboard de Studio](/img/studio/dashboard.png)
+
+:::info Agrégats calculés côté serveur
+Les indicateurs ne sont **pas** calculés dans le navigateur : le serveur exécute des
+requêtes **SQL** sur la base d'exécutions (`runs.db`) et renvoie des agrégats prêts à
+afficher. La vue se recharge à l'affichage via
+`GET /api/viz/overview?from=&to=&workflow=&status=` (fenêtre de **30 jours** par défaut).
+:::
+
+---
+
+## Barre de contrôle
+
+En haut du Dashboard, une barre de contrôle définit **quoi** agréger et **sur quelle
+période**.
+
+| Contrôle | Rôle |
+|----------|------|
+| **Intervalle** | Sélecteur segmenté **7d / 30d / 90d** — la fenêtre temporelle (30d par défaut). |
+| **Filtre Workflow** | Menu à cases, **multi-sélection** : restreint l'overview à un sous-ensemble de workflows. |
+| **Filtre Status** | Restreint aux statuts `success` / `failure` / `running` / `cancelled`. |
+| **Clear all** | Réinitialise tous les filtres actifs. |
+| **Refresh data** | Recharge manuellement les agrégats. |
+| **Periodic refresh** | Case à cocher : rafraîchissement automatique et périodique. |
+| **Saved filters** | Nommer, enregistrer, appliquer et supprimer une combinaison de filtres. |
+
+Les filtres actifs apparaissent sous forme de **chips** supprimables : un clic sur la croix
+d'une chip retire ce filtre sans toucher aux autres.
+
+:::tip Saved filters
+Une combinaison utile (par exemple *un workflow + `failure` sur 90d*) peut être **nommée
+et enregistrée**, puis **appliquée** en un clic. Les filtres enregistrés sont **persistés
+localement** (dans le navigateur), donc propres à ce poste.
+:::
+
+---
+
+## Panneau overview
+
+### Tuiles KPI
+
+Quatre tuiles résument la fenêtre courante :
+
+| Tuile | Contenu |
+|-------|---------|
+| **Success ratio** | Pourcentage de runs terminés en succès. |
+| **Failed ratio** | Pourcentage de runs en échec. |
+| **In progress** | Nombre de runs en cours — affiché en **amber** s'il est &gt; 0. |
+| **Executions** | Total des exécutions sur la fenêtre. |
+
+### Timeline combinée
+
+Une **timeline** combine, par jour, des **barres empilées par statut** (volume
+d'exécutions ventilé par `success` / `failure` / `running` / `cancelled`) et une **ligne de
+durée moyenne** tracée sur un **axe secondaire**. On y lit d'un coup la charge et
+l'évolution des temps d'exécution.
+
+### Donut
+
+Un **donut** montre la **répartition des statuts** sur la fenêtre, avec le **total au
+centre**.
+
+---
+
+## Tables en bas de page
+
+Deux tables complètent l'overview :
+
+- **Last executions** — les **5 runs les plus récents**. Un clic sur une ligne **ouvre le
+  run** dans l'[historique](./historique).
+- **Favorites** — jusqu'à **5 workflows favoris**, **par espace de travail**. Un favori
+  dont le fichier n'existe plus est **masqué**. Chaque entrée propose les actions
+  **ouvrir** (dans l'[éditeur](./editeur)) et **exécuter**.
+
+Un lien renvoie vers cette documentation depuis le panneau.
+
+:::note Favoris par espace
+La liste **Favorites** suit l'[espace de travail](./espaces) courant : basculer d'espace
+change les favoris affichés. Les favoris ne sont **pas** partagés entre espaces.
+:::
+
+---
+
+## Voir aussi
+
+- [Vue d'ensemble](./overview) — la barre latérale et la structure de Studio.
+- [Historique des exécutions](./historique) — le détail d'un run (Gantt, logs, reprise).
+- [Espaces de travail](./espaces) — cloisonnement des exécutions et des favoris.
+- [Référence CLI](../cli-reference) — options de `a4z serve`.

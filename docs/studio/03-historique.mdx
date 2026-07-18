@@ -5,57 +5,127 @@ title: Historique, Gantt & reprise
 
 # Historique des exécutions
 
-L'onglet **Executions** liste les runs **persistés** (par espace de travail), les plus
-récents en tête, **filtrables** (workflow, statut, déclencheur, id).
+L'historique s'appuie sur le **même composant** à deux endroits : la section
+**Exécutions** de la barre latérale (tous les workflows de l'espace) et l'onglet
+**Executions** d'un workflow (filtré sur son chemin). L'affichage est un **maître /
+détail** adossé à une base **SQLite** `.automate4z/runs.db` (une base par espace).
 
-{/* 📸 CAPTURE À AJOUTER — Vue Exécutions : liste des runs à gauche (statut, durée,
-    horodatage, déclencheur) et le champ de filtre.
+---
+
+## Liste des runs
+
+La liste (à gauche) présente les runs les plus récents en tête. Elle offre un champ
+**Filter runs…** et un bouton de rafraîchissement. Chaque ligne affiche :
+
+- une **icône de statut** ;
+- le **nom du workflow** ;
+- la **durée** et l'**horodatage** ;
+- le **trigger** (`studio` ou `cli`).
+
+La suppression se fait ligne par ligne, avec **confirmation**. Elle est **refusée
+(409) tant que le run est encore en cours**.
+
+:::note Sous le capot
+La liste appelle `GET /api/runs?limit=` (**200** par défaut, plus récent d'abord).
+:::
+
+{/* 📸 CAPTURE À AJOUTER — Vue Executions : liste des runs à gauche (icône de statut,
+    durée, horodatage, trigger) et le champ Filter runs….
     Fichier : static/img/studio/executions-list.png
-    Puis remplacer ce bloc par : ![Liste des exécutions](/img/studio/executions-list.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![Liste des exécutions](/img/studio/executions-list.png) */}
+
+![Liste des exécutions](/img/studio/executions-list.png)
 
 ---
 
 ## Détail d'un run
 
-Sélectionner un run affiche son **détail** : statut, **RC**, durée, **paramètres**,
-déclencheur, et la liste des **tâches** (statut, RC, durée).
+Sélectionner un run affiche son **détail** (à droite). L'en-tête reprend l'**icône de
+statut**, le **nom** et l'**id** du run, ainsi que les actions **Resume** et
+**Relaunch**.
 
-{/* 📸 CAPTURE À AJOUTER — Détail d'un run : en-tête avec statut/RC/durée, section
-    Paramètres, et la liste des tâches.
+### Sous-onglets
+
+Ils n'apparaissent que lorsqu'il y a plus que l'**Overview** à montrer :
+
+| Sous-onglet | Affiché si… | Contenu |
+| --- | --- | --- |
+| **Overview** | toujours | Synthèse du run (voir ci-dessous). |
+| **Outputs** | le run a des sorties | Sorties par tâche. |
+| **Inputs** | le run a des entrées | Valeurs `inputs` enregistrées. |
+| **Logs** | il y a des logs | Lignes persistées, groupées par étape. |
+| **Timing** | il y a des étapes | Durée par étape vs médiane historique. |
+| **Results** | le workflow déclare `ui.results` | Vue de résultats définie par le workflow. |
+
+**Overview** rassemble : **Status**, **Exit code** (en rouge s'il est ≠ 0),
+**Duration**, **Trigger**, **Started**, un lien vers le **Workflow**, la **Timeline
+(Gantt)**, la section **Tasks** et la section **Artifacts**.
+
+La section **Tasks** liste les tâches **en ordre d'exécution** : statut, id, name,
+**reason** (par ex. *if-false*, *needs-not-met*), durée et **RC**. Les **Artifacts**
+sont téléchargeables (nom + taille).
+
+Le sous-onglet **Logs** groupe les lignes **par étape** et propose un toggle **DEBUG**
+(les lignes de debug sont masquées par défaut). Le sous-onglet **Timing** compare la
+durée de chaque étape à sa **médiane historique**.
+
+{/* 📸 CAPTURE À AJOUTER — Détail d'un run : en-tête (statut / exit code / durée),
+    sous-onglet Overview et section Tasks.
     Fichier : static/img/studio/execution-detail.png
-    Puis remplacer ce bloc par : ![Détail d'un run](/img/studio/execution-detail.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![Détail d'un run](/img/studio/execution-detail.png) */}
+
+![Détail d'un run](/img/studio/execution-detail.png)
 
 ---
 
 ## Diagramme de Gantt
 
-Le détail inclut une **chronologie (Gantt)** : chaque tâche est une barre positionnée par
-son **début** et sa **durée**, colorée par statut. Les tâches **parallèles se chevauchent**
-fidèlement, et la **tâche fautive** est mise en évidence. Pour un run en cours, le Gantt se
-met à jour **en direct** avec un repère **« maintenant »**.
+La **Timeline (Gantt)** représente chaque tâche par une **barre** positionnée selon son
+**début** et sa **durée**, colorée par statut. Les tâches **parallèles se chevauchent**
+fidèlement, et la **tâche fautive** est mise en évidence. Pour un run en cours, le Gantt
+se met à jour **en direct** avec un repère **« now »**.
 
-{/* 📸 CAPTURE À AJOUTER — Gantt d'un run avec parallélisme (barres qui se chevauchent),
-    idéalement un cas avec une tâche en échec (barre rouge).
+{/* 📸 CAPTURE À AJOUTER — Timeline / Gantt d'un run avec parallélisme (barres qui se
+    chevauchent), idéalement une tâche en échec.
     Fichier : static/img/studio/gantt.png
-    Puis remplacer ce bloc par : ![Diagramme de Gantt](/img/studio/gantt.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![Diagramme de Gantt](/img/studio/gantt.png) */}
+
+![Diagramme de Gantt](/img/studio/gantt.png)
 
 ---
 
-## Relancer
+## Relaunch
 
-Depuis le détail, **Relancer** rouvre le workflow et le **réexécute** avec les paramètres
-enregistrés.
+**Relaunch** ré-ouvre le workflow et le relance avec les **inputs enregistrés** du run.
+L'action est **désactivée si le chemin du workflow est inconnu**.
 
 ---
 
-## Reprendre sur incident
+## Resume — reprise sur incident
 
-Pour un run **interrompu** (échec, arrêt), Studio propose **« Reprendre depuis &lt;tâche&gt; »**
-en s'appuyant sur l'état persisté : les tâches **déjà réussies ne sont pas rejouées**, et le
-suivi en direct reprend. Si le run n'est **pas reprenable** (déjà réussi, fichier disparu,
-aucune tâche réussie), l'option est **désactivée avec une explication**.
+Le bouton **Resume** n'est **affiché que si le run n'a pas réussi**. Son libellé devient
+**« Resume from &lt;tâche&gt; »** lorsque la reprise est possible ; sinon il reste
+**« Resume » désactivé**, avec la raison en infobulle.
+
+Un run est **résumable si et seulement si** :
+
+- il **n'a pas déjà réussi** ;
+- son **fichier workflow existe encore** ;
+- **au moins une étape a réussi**.
+
+La **tâche de reprise** est la **première étape non réussie** en ordre d'exécution. Le
+serveur ré-exécute le workflow en **réinjectant les étapes déjà réussies** : celles-ci
+**ne sont pas rejouées**.
 
 {/* 📸 CAPTURE À AJOUTER — Détail d'un run en échec montrant le bouton
-    « Reprendre depuis &lt;tâche&gt; » (et éventuellement le cas désactivé avec son infobulle).
+    « Resume from &lt;tâche&gt; ».
     Fichier : static/img/studio/resume.png
-    Puis remplacer ce bloc par : ![Reprendre sur incident](/img/studio/resume.png) */}
+    Image ci-dessous (ce commentaire est conservé) : ![Reprendre sur incident](/img/studio/resume.png) */}
+
+![Reprendre sur incident](/img/studio/resume.png)
+
+:::tip
+Pour relancer un run intégralement plutôt que de reprendre à mi-parcours, utilisez
+**Relaunch**. Pour lancer un nouveau run depuis zéro, voir [Exécuter un
+workflow](./execution).
+:::

@@ -5,89 +5,144 @@ title: No-code editor
 
 # Visual editor (No-code mode)
 
-The **Code / No-code** toggle (file bar) replaces the text editor with a **visual
-canvas**. The canvas and the text share the **same internal representation**: any
-visual action **rewrites the YAML** while **preserving your comments, order and
-style** (CST editing).
+The **Code / No-code** toggle (file bar) replaces the text editor with a **visual canvas**.
+The canvas and the text share the **same internal representation**: **every action rewrites
+the YAML through CST primitives**, while **preserving your comments, order, and style**.
 
-{/* 📸 SCREENSHOT TO ADD — No-code mode: task catalog on the left, canvas in the
-    center ("Workflow" node at the top + steps), properties panel on the right.
+The view has three areas: the **Task catalog** on the left, then a **canvas | properties
+panel** split (ratios are persisted).
+
+{/* 📸 SCREENSHOT TO ADD — No-code mode: catalog on the left, canvas in the center
+    (Workflow node + steps), properties panel on the right.
     File: static/img/studio/nocode-overview.png
-    Then replace this block with: ![No-code editor](/img/studio/nocode-overview.png) */}
+    Image below (keep this comment): ![No-code editor](/img/studio/nocode-overview.png) */}
+
+![No-code editor](/img/studio/nocode-overview.png)
 
 :::info Saving
-Saving works in no-code just like in code: the **Save** button in the file bar
-and the **Ctrl/Cmd-S** shortcut.
+Saving works in no-code just like in code: the **Save** button in the file bar and the
+**Ctrl/Cmd-S** shortcut.
 :::
+
+---
+
+## Task catalog
+
+The catalog on the left lists the built-in tasks, fed by the schema, with a **Search tasks…**
+box. At the top, a **special entry** **+ ui: / ui: App surface** (purple bar) adds or selects
+the `ui:` block (see [Declaring an App surface](../app/declarer-ui)).
+
+Tasks are split into **4 families** (fixed order):
+
+| Family | Tasks |
+| --- | --- |
+| **z/OS Mainframe** | `zos-jobs`, `zos-datasets`, `z-deps`, `zos-db2`, `zos-endevor` |
+| **Data** | `json-query`, `yaml-query`, `convert`, `assert`, `template` |
+| **Files** | `fs`, `archive`, `extract` |
+| **Control** | `shell`, `http`, `wait`, `notify`, `git` |
+
+**Deferred** tasks carry a **Soon** badge and are **disabled**: **`zos-db2`** and
+**`zos-endevor`**. You add a task with a **click** or by **dragging it** onto the canvas,
+with its default fields.
+
+{/* 📸 SCREENSHOT TO ADD — Catalog: families, an active search, and the grayed-out Soon
+    entries.
+    File: static/img/studio/catalog.png
+    Image below (keep this comment): ![Task catalog](/img/studio/catalog.png) */}
+
+![Task catalog](/img/studio/catalog.png)
 
 ---
 
 ## The canvas
 
-- **Movable**, **selectable** nodes, with connection **ports**.
-- **Connecting** two tasks (drag from one port to another) adds a `needs`
-  dependency.
-- **Removing** a task / a link via the toolbar (removing a task also purges the
-  `needs` that referenced it).
-- The **text → canvas** sync is **incremental**: an edit updates the graph without
-  rearranging existing nodes. If the YAML becomes invalid, the **last valid graph**
-  is kept ("Last valid graph" indication).
+The canvas (View Flow) materializes the workflow as connected nodes.
 
----
+- **"Workflow" header node** (gray accent) at the top of the graph: selectable to edit
+  name / description / inputs / env, and bearer of the **ui:** / **+ ui:** badge.
+- **Task nodes**: one card per category (icon, name, type, live-status pill).
+- **Ports**: source at the bottom → target at the top; dragging a connection creates a
+  `needs`.
+- **Edges**: explicit `needs` are **solid** with a **×** delete control on hover; implicit
+  sequential links and the header → root link are **dashed** and **non-deletable**.
+- **Insert-on-edge "+"** (Kestra-style) on each edge: opens a picker (**TaskPicker**) or
+  accepts a **drop** from the catalog. A **"+"** also appears under a leaf node to add the
+  next step.
+- **Dragging a node onto another** **swaps** their order.
+- **Toolbar**: **+ Add step**, **Delete step** / **Remove link**.
 
-## Task catalog & drag-and-drop
-
-The **catalog** lists the built-in tasks **grouped by family** (z/OS Mainframe,
-Data, Files, Control), fed by the schema. You add a task with a **click** or by
-**dragging it onto the canvas**, with its **default fields**. **Deferred** tasks
-(`zos-db2`, `zos-endevor`) appear **disabled** ("Soon"). A **search** filters the
-catalog.
-
-{/* 📸 SCREENSHOT TO ADD — Task catalog: collapsible families, an active search,
-    and the grayed-out "Soon" entries.
-    File: static/img/studio/catalog.png
-    Then replace this block with: ![Task catalog](/img/studio/catalog.png) */}
+If the YAML becomes invalid, the canvas keeps the **"Last valid graph"** with an indication.
 
 ---
 
 ## Insert a task on a link
 
-A **"+"** button in the middle of each link lets you **insert a task between two
-tasks** (Kestra-style): clicking opens a **picker**, or you **drop** a task from
-the catalog directly onto the "+". The new task is inserted (`A → N → B`) and
-selected.
+The **"+"** button in the middle of an edge **inserts a task between two tasks**: clicking
+opens the **TaskPicker**, or you **drop** a task from the catalog directly onto the
+**"+"**. The new task is inserted (`A → N → B`) and selected.
 
-{/* 📸 SCREENSHOT TO ADD — The "+" button on a link, ideally with the task picker
-    (popover) open.
+{/* 📸 SCREENSHOT TO ADD — The + button on a link, ideally with the TaskPicker open.
     File: static/img/studio/insert-on-edge.png
-    Then replace this block with: ![Insert on a link](/img/studio/insert-on-edge.png) */}
+    Image below (keep this comment): ![Insert on a link](/img/studio/insert-on-edge.png) */}
+
+![Insert on a link](/img/studio/insert-on-edge.png)
 
 ---
 
 ## Properties panel
 
-Selecting a task opens a **schema-driven form**: one field per input (dropdown for
-`enum`, booleans, numbers, text) with **required-field validation**. Any change
-flows back to the YAML. For a **secret-typed field**, the panel offers the
-**known secrets** (names only) and inserts the **`${secret:NAME}`** format. The
-**`id`** field is **renamable** (`needs` dependencies are repointed automatically).
+The right-hand panel adapts to the selection.
 
-{/* 📸 SCREENSHOT TO ADD — A task's properties panel: id field, a few fields
-    (including an enum), and the secret picker on a sensitive field.
+### Step (task)
+
+- **Editable `id`**: renaming **repoints the `needs`** and **rejects a collision**.
+- **Schema-driven form**: the control depends on the field type.
+
+| Field type | Control |
+| --- | --- |
+| `enum` | dropdown (select) |
+| `boolean` | select |
+| `number` / `integer` | number field |
+| `object` / `array` | raw YAML/JSON editor |
+| other | text field |
+
+The label comes from `x-a4z.label`, an **asterisk** flags required fields, and the
+description and default value appear as help.
+
+- **Secret field** (name containing `auth`/`token`/`secret`/`key`/`password`/`credential`):
+  a text field **plus** an **Insert secret…** select that inserts `${secret:NAME}`. **No
+  value passes through** — only names are handled (see [Secrets](./secrets)).
+
+### Header selected
+
+Edit **name** / **description** / **inputs** (add/remove) / **env**.
+
+### **ui:** badge selected
+
+Edit the **App block**: **name** / **description** / **inputs** (annotations of existing
+inputs) / **outputs** / **results** (widgets, `masking.keys`, reordering, table columns),
+plus a **delete** button for the block. The `ui:` block is detailed in
+[Declaring an App surface](../app/declarer-ui).
+
+{/* 📸 SCREENSHOT TO ADD — A task's properties panel: id field, an enum, and the Insert
+    secret… picker on a sensitive field.
     File: static/img/studio/properties.png
-    Then replace this block with: ![Properties panel](/img/studio/properties.png) */}
+    Image below (keep this comment): ![Properties panel](/img/studio/properties.png) */}
+
+![Properties panel](/img/studio/properties.png)
 
 ---
 
-## Workflow header
+## "Workflow" node (header)
 
-The **header** (everything before `steps:`) is materialized by a **"Workflow"
-node** at the top of the canvas. Selecting it opens a panel to edit **name**,
-**description**, the **inputs** (typed parameters: type, required, default,
-description — add/remove) and the **environment variables** (`env`). New blocks
-are inserted **before `steps:`**.
+The header (everything before `steps:`) is materialized by the **"Workflow" node** at the top
+of the canvas. Selecting it opens the header panel to edit **name**, **description**, the
+**inputs** (add/remove), and the **environment variables** (`env`). This node also carries
+the **ui:** / **+ ui:** badge to manage the App surface.
 
-{/* 📸 SCREENSHOT TO ADD — The selected "Workflow" node + the header panel showing
-    name/description, the inputs list and the env section.
+{/* 📸 SCREENSHOT TO ADD — The selected Workflow node + the header panel showing
+    name/description, the inputs list, and the env section.
     File: static/img/studio/header-panel.png
-    Then replace this block with: ![Workflow header](/img/studio/header-panel.png) */}
+    Image below (keep this comment): ![Workflow header](/img/studio/header-panel.png) */}
+
+![Workflow header](/img/studio/header-panel.png)

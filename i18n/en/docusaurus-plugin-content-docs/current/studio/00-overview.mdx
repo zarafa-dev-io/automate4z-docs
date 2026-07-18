@@ -7,17 +7,20 @@ title: Overview
 
 **Studio** is automate4z's web interface, served locally by the `a4z` binary.
 It lets you edit, validate, run and monitor workflows — in **text** mode
-(YAML editor) or **no-code** mode (visual canvas) — without installing anything
-else: the SPA is **embedded in the binary**.
+(YAML editor) or **no-code** mode (visual canvas) — with nothing else to install: the
+SPA is **embedded in the binary**.
 
-{/* 📸 SCREENSHOT TO ADD — Studio overview: header (workspace switcher,
-    Editor / Executions tabs), workflow list on the left, editor + DAG in the center.
+{/* 📸 SCREENSHOT TO ADD — The Studio shell: sidebar (Dashboard, Workflows, Exécutions,
+    Secrets, Settings), header (workspace switcher, theme, version) and the workflow list
+    in the center.
     File: static/img/studio/overview.png
-    Then replace this block with: ![Studio overview](/img/studio/overview.png) */}
+    Image below (keep this comment): ![Studio overview](/img/studio/overview.png) */}
+
+![Studio overview](/img/studio/overview.png)
 
 ---
 
-## Launch Studio
+## Launching Studio
 
 ```bash
 a4z serve
@@ -29,32 +32,97 @@ a4z serve
 |--------|---------|-------------|
 | `--host` | `127.0.0.1` | Listening interface (loopback only by default) |
 | `--port` | `4500` | TCP port (`0` picks a free port) |
-| `--workspace` | current directory | Served workspace (folder of workflows) |
+| `--workspace` | current directory | Workspace served (workflow folder) |
 | `--no-open` | — | Do not open the browser automatically |
 
 ### Security model
 
-- The server **binds to `127.0.0.1`** by default. Any non-loopback `--host` shows
-  a warning (there is **no network authentication**).
-- A random **session token** is generated and included in the opened URL; any
-  request without a valid token gets `401`. Mutating methods are CSRF-protected.
+- The server **binds to `127.0.0.1`** by default. Any non-loopback `--host` prints a
+  warning (there is **no network authentication**).
+- A random **session token** is generated and included in the opened URL; any request
+  without a valid token gets `401`. Mutating methods are CSRF-protected (token required
+  in a header, loopback `Origin`).
 - `a4z serve` is a **one-shot binary**: no daemon, no service.
 
 ---
 
-## The header
+## Getting around: header & sidebar
 
-The Studio header gathers:
+Studio is organized around a persistent **header** and an icon **sidebar**.
 
-- the **workspace switcher** (open / switch between several folders — see
+The **header** holds:
+
+- the **`a4z` automate4z Studio** logo;
+- in the center, the **workspace switcher** (open / switch between several folders — see
   [Workspaces](./espaces));
-- the **Editor / Executions** toggle (editing vs [run history](./historique));
-- the light / dark theme and the binary version.
+- on the right, the **theme toggle** (light / dark, remembered) and the binary
+  **version** (`a4z <version> · core <version>`).
 
-{/* 📸 SCREENSHOT TO ADD — Close-up of the header: workspace switcher +
-    Editor/Executions tabs + theme toggle.
+{/* 📸 SCREENSHOT TO ADD — Close-up of the header: workspace switcher + theme toggle +
+    binary version.
     File: static/img/studio/header.png
-    Then replace this block with: ![Studio header](/img/studio/header.png) */}
+    Image below (keep this comment): ![Studio header](/img/studio/header.png) */}
+
+![Studio header](/img/studio/header.png)
+
+The **sidebar** gives access to Studio's five surfaces:
+
+| Section | Role |
+|---------|------|
+| **Dashboard** | The [dashboard](./dashboard) landing page: KPIs, trends and latest runs, across all workflows. |
+| **Workflows** | The **workflow list** for the workspace (see below). |
+| **Exécutions** | The [run history](./historique) (all workflows), with detail, Gantt and resume. |
+| **Secrets** | The [Secrets](./secrets) panel (OS keychain, write-only). |
+| **Settings** | The [settings & profiles](./settings) (history retention, AI, notifications…). |
+
+---
+
+## The Workflows list
+
+The **Workflows** section lists the workflow files discovered in the workspace
+(extension **`.a4z.yaml` / `.a4z.yml`**, recursive scan ignoring hidden folders and
+`.automate4z`). A recognized but invalid workflow is **still listed**, flagged with a ⚠.
+
+| Column | Content |
+|--------|---------|
+| **Name / id** | Workflow name + file path (click = open). |
+| **Last execution** | Date of the last run, or "never run". |
+| **Status** | Last status, colored. |
+| **Statistics** | Number of runs, success %, **sparkline** of the last 10. |
+| **Actions** | **Run** (▶), **favorite** (★, capped at 5), **Delete** (with confirmation). |
+
+A **Filter workflows…** field filters the list, **Refresh** re-reads the workspace (a
+workflow created outside Studio only appears after a refresh), and **+ New workflow**
+creates one from a minimal valid template.
+
+---
+
+## The workflow page
+
+Opening a workflow shows a **tabbed** page, with a `Workflows / <name> / <tab>`
+breadcrumb. On the right of the tab bar: the **favorite** (★) and the **Run** button
+(see [Running & monitoring](./execution)).
+
+| Tab | Content |
+|-----|---------|
+| **Overview** | Workflow summary: KPIs over the chosen interval (7d/30d/90d), a **Workflow** card (name, file, description, step count), **Last execution**, and a topology preview. |
+| **Topology** | The [DAG view](./editeur#topology) of the execution graph, **read-only** (live statuses during a run). |
+| **Executions** | The [run history](./historique) filtered on this workflow. |
+| **Editor** | The [workflow editor](./editeur) (**Code** and **No-code** modes). |
+
+{/* 📸 SCREENSHOT TO ADD — A workflow's Overview tab: KPIs, Workflow card
+    (name/file/description/steps) and Last execution.
+    File: static/img/studio/workflow-overview.png
+    Image below (keep this comment): ![Workflow overview](/img/studio/workflow-overview.png) */}
+
+![Workflow overview](/img/studio/workflow-overview.png)
+
+{/* 📸 SCREENSHOT TO ADD — The Topology tab: the read-only DAG (task nodes linked by
+    their dependencies).
+    File: static/img/studio/topology.png
+    Image below (keep this comment): ![Workflow topology](/img/studio/topology.png) */}
+
+![Workflow topology](/img/studio/topology.png)
 
 ---
 
@@ -63,7 +131,17 @@ The Studio header gathers:
 | Mode | Description |
 |------|-------------|
 | **Code** | [YAML editor](./editeur) (CodeMirror) with validation, autocomplete and a read-only DAG view. |
-| **No-code** | [Visual canvas](./no-code): task catalog, drag-and-drop, properties panel, header editing — all rewriting the YAML while preserving your comments. |
+| **No-code** | [Visual canvas](./no-code): task catalog, drag-and-drop, properties panel, header editing — all of which rewrite the YAML while preserving your comments. |
 
-Both views share the **same internal representation**: switching from one to the
-other never loses content.
+Both views share the **same internal representation**: switching between them never
+loses content.
+
+---
+
+## Next steps
+
+- **[Dashboard](./dashboard)** — read the global state (KPIs, trends, favorites).
+- **[Workflow editor](./editeur)** — write and validate in Code mode.
+- **[No-code editor](./no-code)** — build visually.
+- **[Running & monitoring](./execution)** — launch and follow a run live.
+- **[History, Gantt & resume](./historique)** — replay, compare, resume.
