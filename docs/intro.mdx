@@ -3,6 +3,8 @@ sidebar_position: 1
 title: Introduction
 ---
 
+import release from '@site/src/data/release.json';
+
 # automate4z
 
 **automate4z** est un orchestrateur de workflows qui efface la frontière entre exécution mainframe z/OS et exécution locale.
@@ -78,9 +80,9 @@ a4z run hello.yml --input name=Alice
 
 ## Statut du projet
 
-**v1.2.x — 30 tâches built-in stables.** Les tâches z/OS (`zos-jobs`, `zos-datasets`, `z-deps`) sont validées contre z/Xplore ; les lots récents couvrent les données mainframe (copybooks, jeux d'essai, inspection, comparaison), les tests batch (bloc `tests:` + JUnit), le build incrémental (`source-scan` / `build-impact` / `zos-build`), le Studio web, le mode App et les plugins externes.
+**Version courante : v{release.version}** ({release.date}) — 30 tâches built-in stables. Les tâches z/OS (`zos-jobs`, `zos-datasets`, `z-deps`) sont validées contre z/Xplore ; les lots récents couvrent les données mainframe (copybooks, jeux d'essai, inspection, comparaison), les tests batch (bloc `tests:` + JUnit), le build incrémental (`source-scan` / `build-impact` / `zos-build`), le Studio web, le mode App et les plugins externes.
 
-Voir le [CHANGELOG](https://github.com/zarafa-dev-io/automate4z/blob/master/CHANGELOG.md) et les [releases GitHub](https://github.com/zarafa-dev-io/automate4z/releases) pour le détail des versions.
+Le détail de chaque version est sur la page [Notes de version](changelog) — mise à jour automatiquement à chaque release.
 
 ---
 
