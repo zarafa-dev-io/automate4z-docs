@@ -71,6 +71,7 @@ Operations on z/OS MVS datasets (sequential and partitioned PDS/PDSE) **and USS 
 |-------|------|----------|
 | `pattern` | string | one of the two — ISPF pattern (`USER.MYAPP.*`) |
 | `membersOf` | string | one of the two — list members of this PDS |
+| `metadata` | boolean | no — with `pattern`, adds the extended catalog attributes to each dataset: `cdate` (creation), `rdate` (last referenced), `edate` (expiration, empty when none), `dsntp`, `used` (%), `extents`, `size` (tracks), `spaceUnits`. Default `false` (costs more on large catalogs). Migrated datasets return these fields empty, with no HSM recall. |
 
 ### `copy` / `rename`
 
@@ -134,7 +135,7 @@ Operations on z/OS MVS datasets (sequential and partitioned PDS/PDSE) **and USS 
 | `download` | `bytesTransferred`, `localPath` |
 | `create` | `created` (bool) |
 | `delete` | `deleted` (bool) |
-| `list` MVS | `datasets` or `members` (array), `count` |
+| `list` MVS | `datasets` or `members` (array), `count`. With `metadata: true`, each dataset also carries `cdate`, `rdate`, `edate`, `dsntp`, `used`, `extents`, `size`, `spaceUnits`. MVS keeps no modification date at dataset level — `rdate` (last *referenced*) is the closest signal; the real modification date only exists for PDS members (`membersOf` → `modDate`). |
 | `list` USS | `entries` (array), `count` |
 | `exists` MVS | `exists` (bool), `datasetType` |
 | `exists` USS | `exists` (bool), `type` (`file`, `dir`, `symlink`) |

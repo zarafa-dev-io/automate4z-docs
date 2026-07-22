@@ -5,11 +5,11 @@ title: Overview
 
 # Built-in tasks
 
-automate4z ships **30 built-in tasks** in the `a4z` binary. They compose freely within a single workflow — that is the product's philosophy: each task does one thing, and the rich scenarios (testing a batch, impact-driven builds) are documented **compositions**, not black boxes.
+automate4z ships **31 built-in tasks** in the `a4z` binary. They compose freely within a single workflow — that is the product's philosophy: each task does one thing, and the rich scenarios (testing a batch, impact-driven builds) are documented **compositions**, not black boxes.
 
 ## Catalogue
 
-### Local and utility tasks (13)
+### Local and utility tasks (14)
 
 | Task | Domain |
 |------|--------|
@@ -22,6 +22,7 @@ automate4z ships **30 built-in tasks** in the `a4z` binary. They compose freely 
 | [`notify`](notify) | Notifications (email + webhook) |
 | [`git`](git) | Local Git operations (clone, checkout, status, log) |
 | [`assert`](assert) | Condition check |
+| [`log`](log) | Message in the run log (no shell, multi-line safe, secrets masked) |
 | [`json-query`](json-query) | jq query on JSON |
 | [`yaml-query`](yaml-query) | jq query on YAML |
 | [`template`](template) | Go template + Sprig rendering |
