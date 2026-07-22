@@ -1,0 +1,70 @@
+---
+sidebar_position: 30
+title: log
+---
+
+# `log` — Message in the run log
+
+Writes a message to the run log, **without going through a shell**. This is the recommended way to display a result — a list, a report, a computed value — in a run's output: interpolated values, including multi-line ones, display verbatim on every OS, secret masking applies, and none of the shell quoting pitfalls exist.
+
+```yaml
+- uses: log
+  with:
+    message: |
+      Datasets found (${{ steps.list.outputs.count }}):
+      ${{ steps.format.outputs.result }}
+```
+
+## Inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `message` | string (or scalar) | yes | — | Text to write. Each line of the message becomes one log line. A non-string scalar is formatted. |
+| `level` | string | no | `info` | `info` or `error` — mirroring a `shell` step's two streams (stdout → info, stderr → error). |
+
+## Outputs
+
+No outputs of its own — only the [implicit ones](overview#implicit-outputs). Like `assert`'s `message:`, it is information for humans, not for the workflow.
+
+## Examples
+
+**Display a multi-line list produced by a previous step**
+
+```yaml
+- id: format_list
+  uses: json-query
+  with:
+    content: ${{ steps.list_family.outputs.datasets }}
+    query: 'sort_by(.cdate) | reverse | map(.name) | join("\n")'
+    output: scalar
+    raw: true
+
+- uses: log
+  with:
+    message: |
+      Datasets matching ${{ inputs.pattern }} (${{ steps.list_family.outputs.count }}):
+      ${{ steps.format_list.outputs.result }}
+```
+
+**Flag an abnormal, non-blocking situation**
+
+```yaml
+- if: ${{ steps.tests.outputs.warnings > 0 }}
+  uses: log
+  with:
+    level: error
+    message: "${{ steps.tests.outputs.warnings }} test warnings (non-blocking)"
+```
+
+## Common errors
+
+- **Missing `message`** — required; an empty message is accepted (one empty line is logged).
+- **Expecting an output** — `log` returns nothing usable by later steps; to transform a value, use `json-query` or `template`.
+
+## FAQ
+
+**Why not `shell` + `echo`?**
+Three reasons: OS shell quoting (a multi-line value interpolated into `run:` is a classic trap), escaping left to the user, and a process spawned just to print a string. `log` writes straight to the run logger — live streaming, history persistence, secret masking, portability by construction.
+
+**Why no `warn` level?**
+The task logger exposes info/debug/error in v1. `warn` will come if it grows one.

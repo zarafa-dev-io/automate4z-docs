@@ -1,0 +1,70 @@
+---
+sidebar_position: 30
+title: log
+---
+
+# `log` — Message dans le log du run
+
+Écrit un message dans le log du run, **sans passer par un shell**. C'est la voie recommandée pour afficher un résultat — une liste, un rapport, une valeur calculée — dans la sortie d'un run : les valeurs interpolées, y compris multi-lignes, s'affichent telles quelles sur tous les OS, le masquage des secrets s'applique, et aucun piège de quoting shell n'existe.
+
+```yaml
+- uses: log
+  with:
+    message: |
+      Datasets found (${{ steps.list.outputs.count }}):
+      ${{ steps.format.outputs.result }}
+```
+
+## Inputs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `message` | string (ou scalaire) | oui | — | Texte à écrire. Chaque ligne du message devient une ligne de log. Un scalaire non-string est formaté. |
+| `level` | string | non | `info` | `info` ou `error` — le miroir des deux flux d'un step `shell` (stdout → info, stderr → error). |
+
+## Outputs
+
+Aucun output propre — uniquement les [implicites](overview#outputs-implicites). Comme le `message:` d'`assert`, c'est de l'information pour humains, pas pour le workflow.
+
+## Exemples
+
+**Afficher une liste multi-lignes produite par un step précédent**
+
+```yaml
+- id: format_list
+  uses: json-query
+  with:
+    content: ${{ steps.list_family.outputs.datasets }}
+    query: 'sort_by(.cdate) | reverse | map(.name) | join("\n")'
+    output: scalar
+    raw: true
+
+- uses: log
+  with:
+    message: |
+      Datasets matching ${{ inputs.pattern }} (${{ steps.list_family.outputs.count }}):
+      ${{ steps.format_list.outputs.result }}
+```
+
+**Signaler une situation anormale non bloquante**
+
+```yaml
+- if: ${{ steps.tests.outputs.warnings > 0 }}
+  uses: log
+  with:
+    level: error
+    message: "${{ steps.tests.outputs.warnings }} test warnings (non-blocking)"
+```
+
+## Erreurs courantes
+
+- **`message` absent** — requis ; un message vide est accepté (une ligne vide est loggée).
+- **Attendre un output** — `log` ne retourne rien d'exploitable par les steps suivants ; pour transformer une valeur, utiliser `json-query` ou `template`.
+
+## FAQ
+
+**Pourquoi pas `shell` + `echo` ?**
+Trois raisons : le quoting du shell de l'OS (une valeur multi-ligne interpolée dans un `run:` est un piège classique), l'échappement à la charge de l'utilisateur, et un process lancé juste pour imprimer une chaîne. `log` écrit directement dans le logger du run — streaming live, persistance dans l'historique, masquage des secrets, portabilité par construction.
+
+**Pourquoi pas de niveau `warn` ?**
+Le logger des tâches expose info/debug/error en v1. `warn` arrivera s'il s'enrichit.
