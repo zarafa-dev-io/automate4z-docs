@@ -7,7 +7,7 @@ import release from '@site/src/data/release.json';
 
 # Guide de démarrage
 
-> Les **30 tâches built-in** (locales, z/OS, données mainframe, tests batch, build) sont stables — voir [le catalogue](task-reference/overview). Les fonctionnalités marquées **(v2)** dans la spec sont planifiées mais pas encore disponibles.
+> Les **31 tâches built-in** (locales, z/OS, données mainframe, tests batch, build) sont stables — voir [le catalogue](task-reference/overview). Les fonctionnalités marquées **(v2)** dans la spec sont planifiées mais pas encore disponibles.
 
 ## Installation
 
@@ -282,7 +282,7 @@ Ajoutez `.automate4z/` à votre `.gitignore` : l'historique de runs est un état
 Le binaire embarque sa propre documentation — pas besoin de quitter le terminal :
 
 ```bash
-a4z schema --list-tasks       # les 30 tâches, avec leur catégorie et leur résumé
+a4z schema --list-tasks       # les 31 tâches, avec leur catégorie et leur résumé
 a4z docs data-compare         # la doc d'une tâche (inputs, outputs, exemples)
 a4z schema --task zos-jobs    # le JSON Schema des inputs d'une tâche
 a4z runs list                 # l'historique des exécutions du workspace
@@ -394,7 +394,7 @@ a4z run  ci-local.yml --input notify=true --parallelism 2
 | Comprendre les gates, verdicts et le bloc `tests:` | [Gates, verdicts et tests](workflow-spec/gates-et-tests) |
 | Monter un pipeline de build COBOL sans DBB | [Construire et tester](guides/build-and-test) |
 | Tester un batch et voir le résultat dans Jenkins/GitLab | [Tester un batch](guides/tester-un-batch) |
-| Parcourir les 30 tâches | [Référence des tâches](task-reference/overview) |
+| Parcourir les 31 tâches | [Référence des tâches](task-reference/overview) |
 | Ajouter vos propres tâches | [Créer un plugin externe](plugins/creer-un-plugin) |
 | Travailler dans le navigateur | [Interface web (Studio)](studio/overview) |
 
