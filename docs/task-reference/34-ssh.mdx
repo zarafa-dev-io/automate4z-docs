@@ -1,0 +1,43 @@
+---
+sidebar_position: 34
+title: ssh
+---
+
+# `ssh` — Exécution de commande distante
+
+Exécute une **commande sur un hôte distant via SSH** — le `shell` du serveur distant. Même contrat que la tâche [`shell`](shell) : `run:` (commande), outputs `stdout`/`stderr`/`exitCode`, streaming ligne à ligne vers le log du run (stdout en info, stderr en erreur, masqués), `maxOutputBytes`. Un code de retour non nul fait échouer le step. Réutilise le [modèle de connexions du profil](sftp#connexions-du-profil) et **partage la session SSH du run** avec les steps `sftp` sur la même connexion.
+
+```yaml
+- id: notify_partner
+  uses: ssh
+  with:
+    connection: partner-bank      # protocole ssh dans le profil
+    run: /opt/partner/ack.sh clients-20260724
+```
+
+## Inputs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `connection` | string | oui | — | Connexion nommée du profil (protocole `ssh`). |
+| `run` | string | oui | — | Ligne de commande à exécuter sur l'hôte distant. |
+| `maxOutputBytes` | integer | non | `0` | Taille max capturée par flux (`0` = illimité). Au-delà : troncature avec marqueur. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `stdout` | string | Sortie standard capturée. |
+| `stderr` | string | Sortie d'erreur capturée. |
+| `exitCode` | integer | Code de retour de la commande distante. |
+
+## Notes
+
+- **Session partagée** : un step `ssh` et un step `sftp` sur la même connexion nommée réutilisent une seule session SSH pour le run.
+- Mêmes garde-fous que [`sftp`](sftp#connexions-du-profil) : credentials `${secret:}` uniquement (refusés inline au lint, `A4Z-CONN-001`), vérification d'hôte stricte.
+- **Échec sur code non nul** : comme `shell`, un code de retour non nul fait échouer le step (`ExecError`), utilisable avec `continueOnError` + `if:`.
+
+## Erreurs courantes
+
+- **Connexion de protocole `sftp`** dans un step `ssh` — une connexion porte exactement un protocole ; déclarez une connexion `ssh` distincte (même hôte possible).
+- **Commande interactive** — non-but v1 : pas de session interactive, pas de forwarding de ports, pas de SCP (le transfert de fichiers appartient à [`sftp`](sftp)).

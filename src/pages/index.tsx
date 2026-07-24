@@ -92,7 +92,7 @@ function HomepageHeader() {
               <Link
                 className="button button--outline button--secondary button--lg"
                 to="/docs/task-reference/overview">
-                <Translate id="homepage.cta.tasks">32 tâches built-in</Translate>
+                <Translate id="homepage.cta.tasks">37 tâches built-in</Translate>
               </Link>
             </div>
             <p className={styles.licenseNote}>

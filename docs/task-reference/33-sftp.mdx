@@ -1,0 +1,75 @@
+---
+sidebar_position: 33
+title: sftp
+---
+
+# `sftp` — Transfert de fichiers SFTP
+
+Transfère des fichiers et opère sur des chemins distants via **SFTP** — pour les échanges interbancaires et partenaires legacy. C'est le socle des tâches de transfert : elle introduit le **modèle de connexions du profil**, partagé par [`ssh`](ssh), [`s3`](s3) et [`ftp`](ftp).
+
+```yaml
+- id: fetch
+  uses: sftp
+  with:
+    connection: partner-bank      # protocole sftp dans le profil
+    action: download
+    remotePath: /out/clients-20260724.dat
+    localPath: in/clients.dat
+    overwrite: fail               # défaut
+```
+
+## Connexions du profil
+
+Les paramètres de connexion — hôtes, ports, credentials — vivent dans un **bloc `connections:` du profil** (`~/.automate4z/profiles/<profil>.yml`), le miroir exact des endpoints `ai:` et des LPARs z/OS. **Jamais dans le workflow.**
+
+```yaml
+# ~/.automate4z/profiles/default.yml
+connections:
+  partner-bank:
+    protocol: sftp
+    host: sftp.partner.example
+    port: 22
+    user: a4zbot
+    auth:
+      key: ${secret:PARTNER_SSH_KEY}         # ou password: ${secret:...}
+    host_fingerprint: "SHA256:hQ+8P…"        # pin d'empreinte (recommandé)
+```
+
+- **Credentials `${secret:}` uniquement** — résolus depuis le trousseau. Une valeur en clair est **refusée au lint** (`A4Z-CONN-001`) et à l'exécution.
+- **Vérification d'hôte stricte** : pin d'empreinte `host_fingerprint: SHA256:…`, sinon `known_hosts:` (fichier). `host_key: insecure-skip` existe mais **émet un avertissement bruyant à chaque run** — jamais de trust-on-first-use silencieux.
+- **Une session par run et par connexion nommée** : plusieurs steps sur la même connexion réutilisent une seule session, ouverte au premier usage, fermée en fin de run.
+
+## Inputs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `connection` | string | oui | — | Connexion nommée du profil (protocole `sftp`). |
+| `action` | string | oui | — | `upload`, `download`, `list`, `exists`, `delete`, `mkdir`. |
+| `localPath` | string | selon action | — | Fichier local, relatif au workflow (source `upload` / destination `download`). |
+| `remotePath` | string | oui | — | Chemin distant sur le serveur. |
+| `overwrite` | string | non | `fail` | Destination déjà présente : `fail` ou `replace`. |
+| `recursive` | boolean | non | `false` | `mkdir` uniquement : crée les parents (`mkdir -p`). |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `bytesTransferred` | integer | Octets transférés (`upload`/`download`). |
+| `sha256` | string | Empreinte SHA-256 du fichier transféré (`upload`/`download`). |
+| `remotePath` / `localPath` | string | Chemin effectif. |
+| `entries` | array | `list` : `{ name, size, isDir, mode }` par entrée. |
+| `count` | integer | `list` : nombre d'entrées. |
+| `exists` | boolean | `exists` : présence du chemin. |
+| `deleted` / `created` | boolean | `delete` / `mkdir` : opération effectuée. |
+
+## Transferts (garde-fous)
+
+- **Streamés** (jamais en mémoire), un fichier partiel est **supprimé** en cas d'échec — un fichier tronqué qui a l'air complet est pire que pas de fichier.
+- `overwrite: fail` par défaut : pas d'écrasement silencieux.
+- `sha256` du fichier transféré en output — prêt pour [`evidence-collect`](evidence-collect).
+
+## Erreurs courantes
+
+- **Credential en clair dans la connexion** — refusé au lint (`A4Z-CONN-001`) ; utiliser `${secret:NAME}`.
+- **Empreinte d'hôte non vérifiée** — sans `host_fingerprint` ni `known_hosts`, la connexion échoue plutôt que de faire confiance aveuglément.
+- **Destination déjà présente** avec `overwrite: fail` — échec explicite ; passer `replace` pour écraser.

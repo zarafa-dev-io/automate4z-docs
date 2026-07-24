@@ -1,0 +1,75 @@
+---
+sidebar_position: 36
+title: ftp
+---
+
+# `ftp` — Transfert de fichiers FTP
+
+Transfère des fichiers **vers et depuis un serveur FTP** et gère les chemins distants — pour le parc FTP legacy qui porte encore des échanges interbancaires. Mêmes actions et garde-fous que [`sftp`](sftp) ; la différence est la **sécurité de transport**.
+
+```yaml
+- id: pull_partner_file
+  uses: ftp
+  with:
+    connection: partner-legacy    # protocole ftp dans le profil
+    action: download
+    remotePath: /outbox/clients-20260724.dat
+    localPath: in/clients.dat
+    overwrite: fail               # défaut
+```
+
+## Sécurité de transport
+
+Le mode TLS est porté par la **connexion** : `tls: none | explicit | implicit`.
+
+- `none` (défaut — le parc legacy est la raison d'être de la tâche) : credentials et données **en clair**, un **avertissement est émis à chaque run**.
+- `explicit` : `AUTH TLS` sur le canal de contrôle (FTPS explicite).
+- `implicit` : TLS dès la connexion (FTPS implicite).
+
+**Aucun repli silencieux** `explicit`/`implicit` → `none` : si le serveur ne sait pas faire ce qui est demandé, le step échoue.
+
+```yaml
+# ~/.automate4z/profiles/default.yml
+connections:
+  partner-legacy:
+    protocol: ftp
+    host: ftp.partner.example
+    port: 21
+    user: a4zbot
+    tls: explicit
+    auth:
+      password: ${secret:PARTNER_FTP_PASSWORD}
+```
+
+## Inputs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `connection` | string | oui | — | Connexion nommée du profil (protocole `ftp`). |
+| `action` | string | oui | — | `upload`, `download`, `list`, `exists`, `delete`, `mkdir`. |
+| `localPath` | string | selon action | — | Fichier local, relatif au workflow (source `upload` / destination `download`). |
+| `remotePath` | string | oui | — | Chemin sur le serveur FTP. |
+| `overwrite` | string | non | `fail` | Destination déjà présente : `fail` ou `replace`. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `bytesTransferred` | integer | Octets transférés (`upload`/`download`). |
+| `sha256` | string | Empreinte SHA-256 du flux transféré (`upload`/`download`). |
+| `remotePath` / `localPath` | string | Chemin effectif. |
+| `entries` | array | `list` : `{ name, size, isDir }` par entrée. |
+| `count` | integer | `list` : nombre d'entrées. |
+| `exists` | boolean | `exists` : présence du chemin. |
+| `deleted` / `created` | boolean | `delete` / `mkdir` : opération effectuée. |
+
+## Notes
+
+- **Transferts streamés**, fichier partiel **supprimé** en cas d'échec, `overwrite: fail` par défaut, `sha256` en output — comme [`sftp`](sftp).
+- **Credentials** : `auth.password` est une référence `${secret:}` (FTP est mot-de-passe uniquement, pas de clé).
+- **Non-buts v1** : reprise de transfert (un transfert commencé n'est jamais rejoué), FXP (serveur-à-serveur), commandes SITE.
+
+## Erreurs courantes
+
+- **`tls: explicit` sur un serveur sans TLS** — le step échoue, jamais de repli silencieux en clair.
+- **Password en clair** dans la connexion — refusé au lint (`A4Z-CONN-001`) ; utiliser `${secret:NAME}`.

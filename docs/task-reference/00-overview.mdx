@@ -5,7 +5,7 @@ title: Vue d'ensemble
 
 # Tâches built-in
 
-automate4z embarque **32 tâches built-in** dans le binaire `a4z`. Elles se composent librement dans un même workflow — c'est même la philosophie du produit : chaque tâche fait une chose, et les scénarios riches (tester un batch, builder à l'impact) sont des **compositions** documentées, pas des boîtes noires.
+automate4z embarque **37 tâches built-in** dans le binaire `a4z`. Elles se composent librement dans un même workflow — c'est même la philosophie du produit : chaque tâche fait une chose, et les scénarios riches (tester un batch, builder à l'impact) sont des **compositions** documentées, pas des boîtes noires.
 
 ## Catalogue
 
@@ -35,6 +35,18 @@ automate4z embarque **32 tâches built-in** dans le binaire `a4z`. Elles se comp
 | [`zos-jobs`](zos-jobs) | Soumission JCL via z/OSMF, monitoring, SYSOUT |
 | [`zos-datasets`](zos-datasets) | Opérations sur PDS, séquentiels, USS |
 | [`z-deps`](z-deps) | Résolution de dépendances pour COBOL/copybooks |
+
+### Transferts et interop (5)
+
+Recevoir et renvoyer des fichiers (SFTP/FTP/S3), exécuter sur un hôte distant (SSH), convertir localement EBCDIC ↔ UTF-8. Les connexions vivent dans le **profil** (`connections:`), credentials `${secret:}` uniquement — voir [`sftp`](sftp#connexions-du-profil).
+
+| Tâche | Domaine |
+|-------|---------|
+| [`codepage-convert`](codepage-convert) | Conversion locale EBCDIC ↔ UTF-8 (7 tables, round-trip exact) |
+| [`sftp`](sftp) | Transfert de fichiers SFTP + modèle de connexions du profil |
+| [`ssh`](ssh) | Exécution de commande sur un hôte distant |
+| [`s3`](s3) | Objets vers/depuis un stockage compatible S3 (on-premise 1ère classe) |
+| [`ftp`](ftp) | Transfert de fichiers FTP (TLS explicite, parc legacy) |
 
 ### Données mainframe — jeux d'essai et contrôle (7)
 

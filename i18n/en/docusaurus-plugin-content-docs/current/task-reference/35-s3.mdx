@@ -1,0 +1,61 @@
+---
+sidebar_position: 35
+title: s3
+---
+
+# `s3` — Objects to/from S3-compatible storage
+
+Transfers objects **to and from S3-compatible storage** and manages objects in a bucket. **On-premise S3-compatible endpoints** (MinIO, Dell ECS, StorageGRID) are first-class — the real banking case; public AWS S3 is just one default endpoint among others. Reuses the [profile connections model](sftp#profile-connections).
+
+```yaml
+- id: archive_package
+  uses: s3
+  with:
+    connection: audit-store       # s3 protocol in the profile
+    action: upload
+    bucket: audit-2026            # else falls back to the connection's bucket
+    key: exchanges/clients-20260724.dat
+    localPath: out/clients-anonymized.dat
+    overwrite: fail               # default
+```
+
+The `s3` connection carries `endpoint`, `region`, `bucket`, `access_key` and `secret_key` (the last two as `${secret:}`). The `endpoint` accepts `https://host:port` (TLS), `http://host:port` (explicit cleartext) or a bare host (TLS by default) — **no silent TLS fallback**.
+
+## Inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `connection` | string | yes | — | Named connection from the profile (protocol `s3`). |
+| `action` | string | yes | — | `upload`, `download`, `list`, `exists`, `delete`. |
+| `bucket` | string | no | (connection) | Bucket name. Falls back to the connection's bucket when omitted. |
+| `key` | string | action-dependent | — | Object key (`upload`/`download`/`exists`/`delete`). |
+| `prefix` | string | no | — | Key prefix for `list` (empty lists the whole bucket). |
+| `localPath` | string | action-dependent | — | Local file, workflow-relative (`upload` source / `download` destination). |
+| `overwrite` | string | no | `fail` | Destination already exists: `fail` or `replace`. |
+| `maxKeys` | integer | no | `1000` | `list` only: cap the number of objects (pagination is transparent up to the cap). |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `bytesTransferred` | integer | Bytes transferred (`upload`/`download`). |
+| `sha256` | string | SHA-256 of the transferred stream (`upload`/`download`). |
+| `bucket` / `key` | string | Effective bucket and key. |
+| `localPath` | string | Resolved local path (`download`). |
+| `objects` | array | `list`: `{ key, size, etag }` per object. |
+| `count` | integer | `list`: number of objects returned. |
+| `truncated` | boolean | `list`: `true` if the `maxKeys` cap truncated the list. |
+| `exists` | boolean | `exists`: whether the object is present. |
+| `deleted` | boolean | `delete`: deletion performed. |
+
+## Notes
+
+- **On-premise first**: transfers **stream** (transparent multipart above the threshold, the object never sits in memory); a partial download is **deleted** on failure.
+- **`list`** paginates transparently up to `maxKeys`, then sets `truncated: true` — a capped listing never reads as complete.
+- `sha256` of the stream in outputs — ready for [`evidence-collect`](evidence-collect).
+
+## Common errors
+
+- **Inline `access_key`/`secret_key`** in the connection — refused at lint (`A4Z-CONN-001`); use `${secret:NAME}`.
+- **Missing bucket** on both the step **and** the connection — one of them is required.
+- **Not v1 goals**: object versioning, ACLs/policies, presigned URLs, bucket-to-bucket replication.
