@@ -3,6 +3,10 @@
     "message": "Workflow orchestrator for z/OS mainframe and modern DevOps",
     "description": "Homepage meta description"
   },
+  "homepage.release.label": {
+    "message": "Latest release",
+    "description": "Label in the homepage release badge, before the date/time"
+  },
   "homepage.cta.start": {
     "message": "Get started →",
     "description": "Primary CTA button on homepage"

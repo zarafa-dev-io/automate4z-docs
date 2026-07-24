@@ -9,6 +9,8 @@ import HomepageFeatures from '@site/src/components/HomepageFeatures';
 import Heading from '@theme/Heading';
 import Translate, {translate} from '@docusaurus/Translate';
 
+import releaseData from '@site/src/data/release.json';
+
 import styles from './index.module.css';
 
 const WORKFLOW_YAML = `apiVersion: automate4z/v1
@@ -36,6 +38,29 @@ steps:
       impact: \${{ steps.impact.outputs.output }}
       template: jcl/compile.jcl`;
 
+// ReleaseBadge shows the latest published release (number + UTC date/time),
+// read from src/data/release.json — the single source of truth the release
+// workflow updates on every publish. It links to the release notes.
+function ReleaseBadge() {
+  const {i18n} = useDocusaurusContext();
+  const stamp = releaseData.datetime ?? releaseData.date;
+  const formatted = new Intl.DateTimeFormat(i18n.currentLocale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(stamp));
+  return (
+    <Link className={styles.releaseBadge} to="/docs/changelog">
+      <span className={styles.releaseDot} />
+      <span className={styles.releaseVersion}>v{releaseData.version}</span>
+      <span className={styles.releaseMeta}>
+        <Translate id="homepage.release.label">Dernière release</Translate>
+        {` · ${formatted} UTC`}
+      </span>
+    </Link>
+  );
+}
+
 function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
   return (
@@ -43,6 +68,7 @@ function HomepageHeader() {
       <div className="container">
         <div className={styles.heroContent}>
           <div className={styles.heroText}>
+            <ReleaseBadge />
             <div className={styles.badge}>Go · Mainframe DevOps · Licence EULA</div>
             <Heading as="h1" className={styles.heroTitle}>
               <ThemedImage
