@@ -28,7 +28,7 @@ Forme courte équivalente :
 | `shell` | string | non | `bash` (Unix), `pwsh` (Windows) | Interpréteur : `bash`, `sh`, `pwsh`, `cmd`, `python`. |
 | `env` | object | non | — | Variables d'env additionnelles. |
 | `stripAnsi` | boolean | non | `false` | Supprime les codes ANSI de la sortie capturée. |
-| `maxOutputBytes` | integer | non | `10485760` (10 MiB) | Taille max capturée par flux. |
+| `maxOutputBytes` | integer | non | `0` (illimité) | Taille max capturée par flux ; au-delà, troncature avec marqueur. `0` = illimité (le défaut). |
 
 ## Outputs
 

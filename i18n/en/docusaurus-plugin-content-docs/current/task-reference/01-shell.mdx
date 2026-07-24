@@ -28,7 +28,7 @@ Equivalent shorthand:
 | `shell` | string | no | `bash` (Unix), `pwsh` (Windows) | Interpreter: `bash`, `sh`, `pwsh`, `cmd`, `python`. |
 | `env` | object | no | — | Additional environment variables. |
 | `stripAnsi` | boolean | no | `false` | Strip ANSI codes from captured output. |
-| `maxOutputBytes` | integer | no | `10485760` (10 MiB) | Max captured size per stream. |
+| `maxOutputBytes` | integer | no | `0` (unlimited) | Max captured size per stream; beyond it, truncation with a marker. `0` = unlimited (the default). |
 
 ## Outputs
 
