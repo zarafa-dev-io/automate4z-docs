@@ -67,7 +67,8 @@ Validates a workflow without running it. Checks:
 ```bash
 a4z lint my-workflow.yml
 a4z lint my-workflow.yml --format json
-a4z lint my-workflow.yml --strict         # warnings → errors
+a4z lint my-workflow.yml --strict           # warnings → errors
+a4z lint my-workflow.yml --check-secrets    # + ${secret:NAME} refs absent from the keyring
 ```
 
 Text output:
@@ -76,6 +77,12 @@ Text output:
 my-workflow.yml:12:3  error  step id "build" references unknown step "compile" in needs
 my-workflow.yml:18:1  error  cycle detected: alpha → beta → gamma → alpha
 ```
+
+:::note Hermetic lint — and the `--check-secrets` exception
+By default, `a4z lint` is a **pure function of the file**: same file, same output, on every machine — CI included. No check reads the keyring or any machine state, so a CI runner without production secrets can never fail for lacking them.
+
+`--check-secrets` additionally enables the missing-secret warnings (`A4Z-SECRET-001`) — the same ones the Studio's PROBLEMS panel shows, same detection. Warnings only, never errors, and silently omitted when the keyring is unavailable. Combining `--strict --check-secrets` (fail on a missing secret) is an explicit workstation choice, not recommended in CI.
+:::
 
 ---
 
