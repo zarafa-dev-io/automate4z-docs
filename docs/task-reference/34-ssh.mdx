@@ -5,7 +5,7 @@ title: ssh
 
 # `ssh` — Exécution de commande distante
 
-Exécute une **commande sur un hôte distant via SSH** — le `shell` du serveur distant. Même contrat que la tâche [`shell`](shell) : `run:` (commande), outputs `stdout`/`stderr`/`exitCode`, streaming ligne à ligne vers le log du run (stdout en info, stderr en erreur, masqués), `maxOutputBytes`. Un code de retour non nul fait échouer le step. Réutilise le [modèle de connexions du profil](sftp#connexions-du-profil) et **partage la session SSH du run** avec les steps `sftp` sur la même connexion.
+Exécute une **commande sur un hôte distant via SSH** — le `shell` du serveur distant. Même contrat que la tâche [`shell`](shell) : `run:` (commande), outputs `stdout`/`stderr`/`exitCode`, streaming ligne à ligne vers le log du run (stdout en info, stderr en erreur, masqués), `maxOutputBytes`. Un code de retour non nul fait échouer le step. Réutilise le [modèle de connexions du profil](sftp#connexions-du-profil) : deux steps `ssh` sur la même connexion nommée partagent une seule session SSH pour le run.
 
 ```yaml
 - id: notify_partner
@@ -33,7 +33,7 @@ Exécute une **commande sur un hôte distant via SSH** — le `shell` du serveur
 
 ## Notes
 
-- **Session partagée** : un step `ssh` et un step `sftp` sur la même connexion nommée réutilisent une seule session SSH pour le run.
+- **Session partagée** : deux steps `ssh` sur la même connexion nommée réutilisent une seule session SSH, ouverte au premier usage et fermée en fin de run. Une connexion porte **un seul** protocole : `sftp` et `ssh` sont des connexions distinctes (même hôte possible), chacune avec sa propre session.
 - Mêmes garde-fous que [`sftp`](sftp#connexions-du-profil) : credentials `${secret:}` uniquement (refusés inline au lint, `A4Z-CONN-001`), vérification d'hôte stricte.
 - **Échec sur code non nul** : comme `shell`, un code de retour non nul fait échouer le step (`ExecError`), utilisable avec `continueOnError` + `if:`.
 
