@@ -94,6 +94,10 @@ Task outputs are accessible via `${{ steps.<id>.outputs.<name> }}`.
 
 ## Retry (v1.x)
 
+:::caution Not yet available
+`retry` is **planned for v1.x** and does not exist yet in the current 0.x versions. Using it fails parsing (`"retry" is a planned v1.x feature and is not yet available in this version`). This section describes the target behavior.
+:::
+
 ```yaml
 - id: flaky
   uses: http
@@ -106,6 +110,10 @@ Task outputs are accessible via `${{ steps.<id>.outputs.<name> }}`.
 ```
 
 ## Iteration: `forEach` (v1.x)
+
+:::caution Not yet available
+`forEach` (with `as` and `parallel`) is **planned for v1.x** and does not exist yet in the current 0.x versions. Using it fails parsing (`"forEach" is a planned v1.x feature and is not yet available in this version`). In the meantime, repeat the step for each known element, or generate the workflow. This section describes the target behavior.
+:::
 
 Executes the task once per element in a collection:
 
