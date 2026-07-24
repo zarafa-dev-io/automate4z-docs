@@ -1,0 +1,43 @@
+---
+sidebar_position: 34
+title: ssh
+---
+
+# `ssh` — Remote command execution
+
+Runs a **command on a remote host over SSH** — the remote server's `shell`. Same contract as the [`shell`](shell) task: `run:` (command), outputs `stdout`/`stderr`/`exitCode`, line-by-line streaming to the run log (stdout as info, stderr as error, masked), `maxOutputBytes`. A non-zero exit code fails the step. Reuses the [profile connections model](sftp#profile-connections) and **shares the run's SSH session** with `sftp` steps on the same connection.
+
+```yaml
+- id: notify_partner
+  uses: ssh
+  with:
+    connection: partner-bank      # ssh protocol in the profile
+    run: /opt/partner/ack.sh clients-20260724
+```
+
+## Inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `connection` | string | yes | — | Named connection from the profile (protocol `ssh`). |
+| `run` | string | yes | — | Command line to run on the remote host. |
+| `maxOutputBytes` | integer | no | `0` | Max captured size per stream (`0` = unlimited). Beyond it: truncation with a marker. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `stdout` | string | Captured standard output. |
+| `stderr` | string | Captured error output. |
+| `exitCode` | integer | Return code of the remote command. |
+
+## Notes
+
+- **Shared session**: an `ssh` step and an `sftp` step on the same named connection reuse a single SSH session for the run.
+- Same guardrails as [`sftp`](sftp#profile-connections): `${secret:}` credentials only (refused inline at lint, `A4Z-CONN-001`), strict host verification.
+- **Fails on non-zero code**: like `shell`, a non-zero return code fails the step (`ExecError`), usable with `continueOnError` + `if:`.
+
+## Common errors
+
+- **A connection with protocol `sftp`** in an `ssh` step — a connection carries exactly one protocol; declare a distinct `ssh` connection (same host is fine).
+- **Interactive command** — not a v1 goal: no interactive session, no port forwarding, no SCP (file transfer belongs to [`sftp`](sftp)).

@@ -1,0 +1,75 @@
+---
+sidebar_position: 33
+title: sftp
+---
+
+# `sftp` — SFTP file transfer
+
+Transfers files and operates on remote paths over **SFTP** — for interbank and legacy-partner exchanges. It is the foundation of the transfer tasks: it introduces the **profile connections model** shared by [`ssh`](ssh), [`s3`](s3) and [`ftp`](ftp).
+
+```yaml
+- id: fetch
+  uses: sftp
+  with:
+    connection: partner-bank      # sftp protocol in the profile
+    action: download
+    remotePath: /out/clients-20260724.dat
+    localPath: in/clients.dat
+    overwrite: fail               # default
+```
+
+## Profile connections
+
+Connection settings — hosts, ports, credentials — live in a **`connections:` block of the profile** (`~/.automate4z/profiles/<profile>.yml`), the exact mirror of the `ai:` endpoints and z/OS LPARs. **Never in the workflow.**
+
+```yaml
+# ~/.automate4z/profiles/default.yml
+connections:
+  partner-bank:
+    protocol: sftp
+    host: sftp.partner.example
+    port: 22
+    user: a4zbot
+    auth:
+      key: ${secret:PARTNER_SSH_KEY}         # or password: ${secret:...}
+    host_fingerprint: "SHA256:hQ+8P…"        # fingerprint pin (recommended)
+```
+
+- **`${secret:}` credentials only** — resolved from the keyring. An inline value is **refused at lint** (`A4Z-CONN-001`) and at execution.
+- **Strict host verification**: fingerprint pin `host_fingerprint: SHA256:…`, otherwise `known_hosts:` (file). `host_key: insecure-skip` exists but **emits a loud warning on every run** — never silent trust-on-first-use.
+- **One session per run per named connection**: several steps on the same connection reuse a single session, opened on first use, closed at run end.
+
+## Inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `connection` | string | yes | — | Named connection from the profile (protocol `sftp`). |
+| `action` | string | yes | — | `upload`, `download`, `list`, `exists`, `delete`, `mkdir`. |
+| `localPath` | string | action-dependent | — | Local file, workflow-relative (`upload` source / `download` destination). |
+| `remotePath` | string | yes | — | Remote path on the server. |
+| `overwrite` | string | no | `fail` | Destination already exists: `fail` or `replace`. |
+| `recursive` | boolean | no | `false` | `mkdir` only: create parents (`mkdir -p`). |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `bytesTransferred` | integer | Bytes transferred (`upload`/`download`). |
+| `sha256` | string | SHA-256 of the transferred file (`upload`/`download`). |
+| `remotePath` / `localPath` | string | Effective path. |
+| `entries` | array | `list`: `{ name, size, isDir, mode }` per entry. |
+| `count` | integer | `list`: number of entries. |
+| `exists` | boolean | `exists`: whether the path is present. |
+| `deleted` / `created` | boolean | `delete` / `mkdir`: operation performed. |
+
+## Transfers (guardrails)
+
+- **Streamed** (never buffered in memory), a partial file is **deleted** on failure — a truncated file that looks complete is worse than no file.
+- `overwrite: fail` by default: no silent overwrite.
+- `sha256` of the transferred file in outputs — ready for [`evidence-collect`](evidence-collect).
+
+## Common errors
+
+- **Inline credential in the connection** — refused at lint (`A4Z-CONN-001`); use `${secret:NAME}`.
+- **Unverified host fingerprint** — without `host_fingerprint` or `known_hosts`, the connection fails rather than trusting blindly.
+- **Destination already present** with `overwrite: fail` — explicit failure; pass `replace` to overwrite.

@@ -1,0 +1,75 @@
+---
+sidebar_position: 36
+title: ftp
+---
+
+# `ftp` — FTP file transfer
+
+Transfers files **to and from an FTP server** and manages remote paths — for the legacy FTP estate that still carries interbank exchanges. Same actions and guardrails as [`sftp`](sftp); the difference is **transport security**.
+
+```yaml
+- id: pull_partner_file
+  uses: ftp
+  with:
+    connection: partner-legacy    # ftp protocol in the profile
+    action: download
+    remotePath: /outbox/clients-20260724.dat
+    localPath: in/clients.dat
+    overwrite: fail               # default
+```
+
+## Transport security
+
+The TLS mode is carried by the **connection**: `tls: none | explicit | implicit`.
+
+- `none` (default — the legacy estate is the task's reason to exist): credentials and data **in the clear**, a **warning is emitted on every run**.
+- `explicit`: `AUTH TLS` on the control channel (explicit FTPS).
+- `implicit`: TLS from connect (implicit FTPS).
+
+**No silent fallback** `explicit`/`implicit` → `none`: if the server cannot do what was asked, the step fails.
+
+```yaml
+# ~/.automate4z/profiles/default.yml
+connections:
+  partner-legacy:
+    protocol: ftp
+    host: ftp.partner.example
+    port: 21
+    user: a4zbot
+    tls: explicit
+    auth:
+      password: ${secret:PARTNER_FTP_PASSWORD}
+```
+
+## Inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `connection` | string | yes | — | Named connection from the profile (protocol `ftp`). |
+| `action` | string | yes | — | `upload`, `download`, `list`, `exists`, `delete`, `mkdir`. |
+| `localPath` | string | action-dependent | — | Local file, workflow-relative (`upload` source / `download` destination). |
+| `remotePath` | string | yes | — | Path on the FTP server. |
+| `overwrite` | string | no | `fail` | Destination already exists: `fail` or `replace`. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `bytesTransferred` | integer | Bytes transferred (`upload`/`download`). |
+| `sha256` | string | SHA-256 of the transferred stream (`upload`/`download`). |
+| `remotePath` / `localPath` | string | Effective path. |
+| `entries` | array | `list`: `{ name, size, isDir }` per entry. |
+| `count` | integer | `list`: number of entries. |
+| `exists` | boolean | `exists`: whether the path is present. |
+| `deleted` / `created` | boolean | `delete` / `mkdir`: operation performed. |
+
+## Notes
+
+- **Streamed transfers**, partial file **deleted** on failure, `overwrite: fail` by default, `sha256` in outputs — like [`sftp`](sftp).
+- **Credentials**: `auth.password` is a `${secret:}` reference (FTP is password-only, no key).
+- **Not v1 goals**: transfer resume (a started transfer is never replayed), FXP (server-to-server), SITE commands.
+
+## Common errors
+
+- **`tls: explicit` against a server without TLS** — the step fails, never a silent cleartext fallback.
+- **Inline password** in the connection — refused at lint (`A4Z-CONN-001`); use `${secret:NAME}`.

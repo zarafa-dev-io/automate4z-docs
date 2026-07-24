@@ -1,0 +1,61 @@
+---
+sidebar_position: 35
+title: s3
+---
+
+# `s3` — Objets vers/depuis un stockage compatible S3
+
+Transfère des objets **vers et depuis un stockage compatible S3** et gère les objets d'un bucket. Les **endpoints S3-compatibles on-premise** (MinIO, Dell ECS, StorageGRID) sont traités en première classe — le cas bancaire réel ; AWS S3 public n'est qu'un endpoint par défaut parmi d'autres. Réutilise le [modèle de connexions du profil](sftp#connexions-du-profil).
+
+```yaml
+- id: archive_package
+  uses: s3
+  with:
+    connection: audit-store       # protocole s3 dans le profil
+    action: upload
+    bucket: audit-2026            # sinon repli sur le bucket de la connexion
+    key: exchanges/clients-20260724.dat
+    localPath: out/clients-anonymized.dat
+    overwrite: fail               # défaut
+```
+
+La connexion `s3` porte `endpoint`, `region`, `bucket`, `access_key` et `secret_key` (ces deux dernières en `${secret:}`). L'`endpoint` accepte `https://host:port` (TLS), `http://host:port` (clair, explicite) ou un hôte nu (TLS par défaut) — **aucun repli TLS silencieux**.
+
+## Inputs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `connection` | string | oui | — | Connexion nommée du profil (protocole `s3`). |
+| `action` | string | oui | — | `upload`, `download`, `list`, `exists`, `delete`. |
+| `bucket` | string | non | (connexion) | Nom du bucket. Repli sur le bucket de la connexion si omis. |
+| `key` | string | selon action | — | Clé de l'objet (`upload`/`download`/`exists`/`delete`). |
+| `prefix` | string | non | — | Préfixe de clé pour `list` (vide = tout le bucket). |
+| `localPath` | string | selon action | — | Fichier local, relatif au workflow (source `upload` / destination `download`). |
+| `overwrite` | string | non | `fail` | Destination déjà présente : `fail` ou `replace`. |
+| `maxKeys` | integer | non | `1000` | `list` uniquement : plafonne le nombre d'objets (pagination transparente jusqu'au plafond). |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `bytesTransferred` | integer | Octets transférés (`upload`/`download`). |
+| `sha256` | string | Empreinte SHA-256 du flux transféré (`upload`/`download`). |
+| `bucket` / `key` | string | Bucket et clé effectifs. |
+| `localPath` | string | Chemin local résolu (`download`). |
+| `objects` | array | `list` : `{ key, size, etag }` par objet. |
+| `count` | integer | `list` : nombre d'objets renvoyés. |
+| `truncated` | boolean | `list` : `true` si le plafond `maxKeys` a coupé la liste. |
+| `exists` | boolean | `exists` : présence de l'objet. |
+| `deleted` | boolean | `delete` : suppression effectuée. |
+
+## Notes
+
+- **On-premise d'abord** : les transferts **streament** (multipart transparent au-delà du seuil, l'objet ne tient jamais en mémoire) ; un téléchargement partiel est **supprimé** en cas d'échec.
+- **`list`** pagine de façon transparente jusqu'à `maxKeys` puis positionne `truncated: true` — une liste plafonnée ne se lit jamais comme complète.
+- `sha256` du flux en output — prêt pour [`evidence-collect`](evidence-collect).
+
+## Erreurs courantes
+
+- **`access_key`/`secret_key` en clair** dans la connexion — refusé au lint (`A4Z-CONN-001`) ; utiliser `${secret:NAME}`.
+- **Bucket absent** sur le step **et** sur la connexion — l'un des deux est requis.
+- **Non-buts v1** : versioning d'objets, ACL/policies, presigned URLs, réplication bucket-à-bucket.

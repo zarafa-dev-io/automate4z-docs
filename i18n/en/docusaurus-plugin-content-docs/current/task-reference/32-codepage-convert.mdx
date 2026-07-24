@@ -1,0 +1,64 @@
+---
+sidebar_position: 32
+title: codepage-convert
+---
+
+# `codepage-convert` — Local EBCDIC ↔ UTF-8 conversion
+
+Converts a **local file** between EBCDIC and UTF-8, both directions, over the 7 embedded EBCDIC tables — for files obtained **outside z/OSMF** (a partner [`sftp`](sftp) transfer, an archive), where the implicit conversion of z/OSMF transfers does not apply. Zero dependencies, **byte-identical** round-trip.
+
+The key point: converting an EBCDIC **file** is not converting characters. An EBCDIC file has no line endings, a UTF-8 file does. The guardrail applies to the letter — **never guess**: the record mode is **mandatory**.
+
+```yaml
+- uses: codepage-convert
+  with:
+    input: in/clients.dat
+    output: work/clients.txt
+    from: cp1147          # EBCDIC France
+    to: utf-8             # exactly one side must be utf-8
+    mode: records         # MANDATORY: records | stream
+    lrecl: 120            # required in records mode
+```
+
+## Inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `input` | string | yes | — | Source file, workflow-relative. |
+| `output` | string | yes | — | Destination file. |
+| `from` | string | yes | — | Source encoding: `utf-8` or an EBCDIC table (`cp037`, `cp1140`, `cp297`, `cp1147`, `cp500`, `cp1148`, `cp1047`). |
+| `to` | string | yes | — | Destination encoding, same values. **Exactly one** side must be `utf-8`. |
+| `mode` | string | yes | — | `records` (fixed records ↔ lines) or `stream` (byte-for-byte). Never guessed. |
+| `lrecl` | integer | mode-dependent | — | Required in `records` mode: fixed record length. |
+| `trim` | boolean | no | `false` | In `records` mode on decode: strip trailing blanks from each record. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `records` | integer | Number of records converted (`records` mode). |
+| `bytes` | integer | Bytes written. |
+| `sha256` | string | SHA-256 digest of the produced file. |
+
+## Modes
+
+- **`mode: records` + `lrecl:`** — each `lrecl`-byte EBCDIC record becomes one UTF-8 line (and vice versa). On encode, each line is padded with EBCDIC spaces to `lrecl`; a line that is too long is an **error naming the line**. CRLF sources are tolerated on encode.
+- **`mode: stream`** — pure byte-for-byte conversion, for data with no line structure. The EBCDIC NL (0x15) is translated per the table, with no special handling.
+
+## Common errors
+
+- **Missing `mode`** — static refusal: record structure is never guessed.
+- **Missing `lrecl` in `records` mode** — required.
+- **Neither `from` nor `to` is `utf-8`, or both** — exactly one side must be `utf-8`.
+- **Character with no representation in the target table** — loud failure **naming the offset and character**, never a substitute byte.
+- **File not a multiple of `lrecl`** (`records` mode) — failure naming the incomplete record.
+
+On failure, the partial output file is deleted.
+
+## FAQ
+
+**When to use it instead of `zos-datasets` binary mode?**
+When the file arrives **outside z/OSMF** — over partner SFTP, in an archive. z/OSMF transfers already convert on the fly; this task covers everything else, locally.
+
+**Double-byte (DBCS)?**
+Not in v1: the engine is single-byte (the 7 tables above). A DBCS extension would be a dedicated lot.

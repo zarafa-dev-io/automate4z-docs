@@ -7,7 +7,7 @@ import release from '@site/src/data/release.json';
 
 # Getting started
 
-> The **32 built-in tasks** (local, z/OS, mainframe data, batch testing, build) are stable — see [the catalogue](task-reference/overview). Features marked **(v2)** in the spec are planned but not yet available.
+> The **37 built-in tasks** (local, z/OS, mainframe data, batch testing, build) are stable — see [the catalogue](task-reference/overview). Features marked **(v2)** in the spec are planned but not yet available.
 
 ## Installation
 
@@ -282,7 +282,7 @@ Add `.automate4z/` to your `.gitignore`: the run history is local state, not cod
 The binary ships its own documentation — no need to leave the terminal:
 
 ```bash
-a4z schema --list-tasks       # the 32 tasks, with category and summary
+a4z schema --list-tasks       # the 37 tasks, with category and summary
 a4z docs data-compare         # a task's documentation (inputs, outputs, examples)
 a4z schema --task zos-jobs    # a task's input JSON Schema
 a4z runs list                 # the workspace's run history
@@ -394,7 +394,7 @@ a4z run  ci-local.yml --input notify=true --parallelism 2
 | Understand gates, verdicts and the `tests:` block | [Gates, verdicts and tests](workflow-spec/gates-et-tests) |
 | Set up a COBOL build pipeline without DBB | [Build and test](guides/build-and-test) |
 | Test a batch and see the result in Jenkins/GitLab | [Testing a batch](guides/tester-un-batch) |
-| Browse the 32 tasks | [Task reference](task-reference/overview) |
+| Browse the 37 tasks | [Task reference](task-reference/overview) |
 | Add your own tasks | [Writing an external plugin](plugins/creer-un-plugin) |
 | Work in the browser | [Web interface (Studio)](studio/overview) |
 

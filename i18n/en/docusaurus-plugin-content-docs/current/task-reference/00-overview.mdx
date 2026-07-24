@@ -5,7 +5,7 @@ title: Overview
 
 # Built-in tasks
 
-automate4z ships **32 built-in tasks** in the `a4z` binary. They compose freely within a single workflow — that is the product's philosophy: each task does one thing, and the rich scenarios (testing a batch, impact-driven builds) are documented **compositions**, not black boxes.
+automate4z ships **37 built-in tasks** in the `a4z` binary. They compose freely within a single workflow — that is the product's philosophy: each task does one thing, and the rich scenarios (testing a batch, impact-driven builds) are documented **compositions**, not black boxes.
 
 ## Catalogue
 
@@ -35,6 +35,18 @@ automate4z ships **32 built-in tasks** in the `a4z` binary. They compose freely 
 | [`zos-jobs`](zos-jobs) | JCL submission via z/OSMF, monitoring, SYSOUT retrieval |
 | [`zos-datasets`](zos-datasets) | Operations on PDS, sequential datasets, USS |
 | [`z-deps`](z-deps) | Dependency resolution for COBOL/copybooks |
+
+### Transfers and interop (5)
+
+Receive and return files (SFTP/FTP/S3), run on a remote host (SSH), convert EBCDIC ↔ UTF-8 locally. Connections live in the **profile** (`connections:`), `${secret:}` credentials only — see [`sftp`](sftp#profile-connections).
+
+| Task | Domain |
+|------|--------|
+| [`codepage-convert`](codepage-convert) | Local EBCDIC ↔ UTF-8 conversion (7 tables, exact round-trip) |
+| [`sftp`](sftp) | SFTP file transfer + profile connections model |
+| [`ssh`](ssh) | Command execution on a remote host |
+| [`s3`](s3) | Objects to/from S3-compatible storage (on-premise first-class) |
+| [`ftp`](ftp) | FTP file transfer (explicit TLS, legacy estate) |
 
 ### Mainframe data — test datasets and control (7)
 
