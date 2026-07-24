@@ -67,7 +67,8 @@ Valide un workflow sans l'exécuter. Vérifie :
 ```bash
 a4z lint mon-workflow.yml
 a4z lint mon-workflow.yml --format json
-a4z lint mon-workflow.yml --strict         # warnings → erreurs
+a4z lint mon-workflow.yml --strict           # warnings → erreurs
+a4z lint mon-workflow.yml --check-secrets    # + secrets ${secret:NOM} absents du trousseau
 ```
 
 Sortie texte :
@@ -76,6 +77,12 @@ Sortie texte :
 mon-workflow.yml:12:3  error  step id "build" references unknown step "compile" in needs
 mon-workflow.yml:18:1  error  cycle detected: alpha → beta → gamma → alpha
 ```
+
+:::note Lint hermétique — et l'exception `--check-secrets`
+Par défaut, `a4z lint` est une **fonction pure du fichier** : même fichier, même sortie, sur toute machine — CI comprise. Aucune vérification ne lit le trousseau ni l'état de la machine ; un runner CI sans les secrets de production ne peut donc jamais rougir pour ça.
+
+`--check-secrets` active en plus les avertissements de secrets manquants (`A4Z-SECRET-001`) — les mêmes que le panneau PROBLEMS du Studio, même détection. Warning, jamais erreur, et silencieux si le trousseau est indisponible. Combiner `--strict --check-secrets` (échouer sur un secret manquant) est un choix explicite de poste de développeur, pas recommandé en CI.
+:::
 
 ---
 
