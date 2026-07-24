@@ -19,6 +19,7 @@ Les expressions entre `${{ }}` sont évaluées par le runtime au moment de l'ex�
 | `matrix.*` | Variables de matrice (v1.x) | dans un run matriciel |
 | `workflow.*` | Métadonnées (`name`, `runId`, `startedAt`) | partout |
 | `runner.*` | Infos du runner (`os`, `arch`, `cwd`) | partout |
+| `run.*` | Issue du DAG principal : `status`, `failed_step`, `started_at`, `ended_at` | steps `finally:` uniquement |
 
 ## Opérateurs supportés
 

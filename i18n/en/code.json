@@ -8,7 +8,7 @@
     "description": "Primary CTA button on homepage"
   },
   "homepage.cta.tasks": {
-    "message": "31 built-in tasks",
+    "message": "32 built-in tasks",
     "description": "Secondary CTA button on homepage"
   },
   "homepage.features.sectionLabel": {
@@ -36,7 +36,7 @@
     "description": "Feature card description"
   },
   "homepage.feature.tasks.title": {
-    "message": "31 built-in tasks",
+    "message": "32 built-in tasks",
     "description": "Feature card title"
   },
   "homepage.feature.tasks.description": {

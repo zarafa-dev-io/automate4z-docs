@@ -1,0 +1,81 @@
+---
+sidebar_position: 3
+title: Collecting execution evidence
+---
+
+# Collecting execution evidence
+
+In regulated environments, execution proof — logs, return codes, timestamps, artifacts — is often collected by hand, after the fact, with no integrity guarantee. a4z has the **pipeline itself** produce it: a tamper-evident, signed audit package, verifiable offline with the binary alone.
+
+Three building blocks:
+
+1. **The [`finally:`](../workflow-spec/structure#the-finally-block) block** — guaranteed steps, run whatever the run's outcome. A failed run is precisely the one an audit wants documented.
+2. **The [`evidence-collect`](../task-reference/evidence-collect) task** — collects the run's outcome, step outputs and produced files into a deterministic archive with an Ed25519-signed manifest.
+3. **`a4z evidence verify`** — the counter-check: offline, no shared secret, the public key alone.
+
+## The workflow
+
+Excerpt from the canonical `constitute-test-dataset` (shipped in `examples/anonymize/`):
+
+```yaml
+steps:
+  # … copybook parse, decode, anonymize, re-encode …
+  - id: analyze_producer_job
+    uses: spool-analyze
+    with:
+      source: ../tst/success.spool   # the spool of the job that produced the dataset
+      fail_on: never                 # the analysis documents, it never gates
+
+finally:
+  - id: evidence
+    uses: evidence-collect
+    with:
+      include:
+        - kind: run                          # status, steps, RCs, timestamps
+        - kind: output
+          step: analyze_producer_job         # producing job's verdict + datasets[]
+        - kind: file
+          path: out/anonymize-report.json    # the ANO anonymization report
+      output: out/audit-${{ run.status }}.a4zevidence
+      sign:
+        algorithm: ed25519
+        key: stdin
+```
+
+## Sign and verify
+
+```bash
+# Generate the key pair (once):
+openssl genpkey -algorithm ed25519 -out signing-key.pem
+openssl pkey -in signing-key.pem -pubout -out audit.pub
+
+# Run — the private key arrives via stdin, exclusively:
+a4z run constitute-test-dataset.a4z.yaml -i sign=true < signing-key.pem
+
+# The auditor, elsewhere, offline:
+a4z evidence verify out/audit-success.a4zevidence --public-key audit.pub
+```
+
+```
+OK  out/audit-success.a4zevidence
+    run 01KYA0C1… (constitute-test-dataset) — success
+    3 element(s) verified, signature ed25519
+```
+
+Flip one byte anywhere — an element, the run status in the manifest, a digest — and verification fails **naming the altered element**, exit 1.
+
+## The failed run
+
+```bash
+a4z run constitute-test-dataset.a4z.yaml -i sign=true -i provoke_failure=true < signing-key.pem
+a4z evidence verify out/audit-failure.a4zevidence --public-key audit.pub
+```
+
+The package documents the failure: `run.status = failure`, the failing step, timestamps, each step's RC. That is the audit's nominal scenario, not an error.
+
+## What to know
+
+- **The private key travels via stdin only.** A `sign.key` naming a path or an environment variable is refused at lint (`A4Z-EVIDENCE-001`). Never argv, never the environment, never the logs.
+- **Secrets**: generated documents pass through the run's sensitive-value registry (`***`). **Raw artifacts**: never masked — their protection is provenance: without an anonymizing step in the run, a warning is emitted and **sealed in the manifest**, covered by the signature.
+- **Large artifacts**: beyond `max_inline_size` (10 MB by default), the manifest seals reference + sha256 without the bytes; `a4z evidence verify --external e2=<path>` checks the artifact supplied alongside.
+- **Determinism**: same inputs → byte-identical package (modulo the creation timestamp).

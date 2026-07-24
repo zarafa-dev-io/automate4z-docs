@@ -16,6 +16,7 @@ a4z [command]
   docs        Afficher la documentation d'une tâche
   schema      Exporter les JSON Schema (workflow ou tâche)
   secrets     Gérer les secrets nommés dans le trousseau de l'OS
+  evidence    Vérifier les paquets d'audit (evidence verify)
   plugins     Découvrir et gérer les plugins externes
   app         Assistants du mode App (lanceur double-cliquable)
   version     Afficher la version
@@ -83,6 +84,25 @@ Par défaut, `a4z lint` est une **fonction pure du fichier** : même fichier, m�
 
 `--check-secrets` active en plus les avertissements de secrets manquants (`A4Z-SECRET-001`) — les mêmes que le panneau PROBLEMS du Studio, même détection. Warning, jamais erreur, et silencieux si le trousseau est indisponible. Combiner `--strict --check-secrets` (échouer sur un secret manquant) est un choix explicite de poste de développeur, pas recommandé en CI.
 :::
+
+---
+
+## `a4z evidence verify <paquet.a4zevidence>`
+
+Vérifie un paquet d'audit produit par [`evidence-collect`](task-reference/evidence-collect) — **hors ligne, avec la seule clé publique** : signature Ed25519 du manifeste, sha256 de chaque élément inline, absence d'entrée non déclarée.
+
+```bash
+a4z evidence verify audit/run.a4zevidence --public-key audit.pub
+a4z evidence verify audit/run.a4zevidence --public-key audit.pub --external e2=./out/bigdata.bin
+```
+
+| Sortie | Signification |
+|--------|---------------|
+| exit 0 | Paquet sain (les références non fournies sont listées `NOT CHECKED`). |
+| exit 1 | Altération détectée — chaque élément altéré est identifié (`TAMPERED e1 (…): …`). |
+| exit 2 | Vérification impossible (paquet illisible, non signé, clé invalide). |
+
+`--external <id>=<chemin>` (répétable) vérifie en streaming un artefact gardé hors paquet (au-delà de `max_inline_size`) contre l'empreinte scellée par le manifeste signé.
 
 ---
 

@@ -1,0 +1,74 @@
+---
+sidebar_position: 31
+title: evidence-collect
+---
+
+# `evidence-collect` — Paquet d'audit inviolable
+
+Agrège la preuve d'exécution — issue du run, sorties de steps, fichiers produits — en un **paquet d'audit déterministe et signé** (`.a4zevidence`) : archive zip normalisée portant un manifeste JSON versionné avec un sha256 par élément, signé **Ed25519**. Se place dans le bloc [`finally:`](../workflow-spec/structure#le-bloc-finally) : la collecte s'exécute quel que soit le sort du run — un run en échec est un **cas nominal**, précisément ce qu'un audit veut documenter. Vérification hors ligne, avec le seul binaire.
+
+```yaml
+finally:
+  - id: evidence
+    uses: evidence-collect
+    with:
+      include:
+        - kind: run
+        - kind: output
+          step: analyze
+        - kind: file
+          path: ./out/rapport.ndjson
+      output: audit/${{ workflow.runId }}.a4zevidence
+      sign:
+        algorithm: ed25519
+        key: stdin
+```
+
+```bash
+# La clé privée arrive par stdin, exclusivement :
+a4z run audit.a4z.yaml < signing-key.pem
+# Vérification par un tiers, hors ligne, avec la seule clé publique :
+a4z evidence verify audit/<runId>.a4zevidence --public-key audit.pub
+```
+
+## Inputs
+
+| Champ | Type | Requis | Description |
+|-------|------|--------|-------------|
+| `include` | array | oui | Éléments à collecter, dans l'ordre. `kind: run` (statut, steps, horodatages, outputs), `kind: output` + `step:` (les sorties d'un step), `kind: file` + `path:` (un fichier produit, byte-identique — déclaré mais absent = échec bruyant). |
+| `output` | string | oui | Chemin du paquet produit. |
+| `max_inline_size` | integer ou string | non | Seuil d'inclusion physique pour `kind: file` (défaut `10MB`, suffixes `KB`/`MB`/`GB`). Au-delà : le fichier est stream-digesté et le manifeste scelle référence + sha256 sans les octets — vérifiable via `--external`. |
+| `sign` | object | non | Signature Ed25519 : `key: stdin` **obligatoirement** (un chemin ou une variable d'env est refusé au lint, `A4Z-EVIDENCE-001`). Clé PEM PKCS#8 (openssl) ou seed hex, jamais loggée. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `output` | string | Chemin résolu du paquet. |
+| `elements` | integer | Éléments collectés. |
+| `size` | integer | Taille du paquet (octets). |
+| `sha256` | string | Empreinte du fichier paquet. |
+
+## Vérification
+
+```
+a4z evidence verify <paquet> --public-key <clé> [--external <id>=<chemin>]...
+```
+
+Signature du manifeste (toute réécriture — statut, empreinte, chemin — l'invalide), sha256 de chaque élément inline, absence d'entrée non déclarée. **Exit 0** si sain ; **exit 1** en identifiant chaque élément altéré ; exit 2 si la vérification n'a pas pu se faire. `--external` vérifie en streaming un artefact gardé hors paquet ; une référence non fournie est listée `NOT CHECKED` avec la commande à compléter.
+
+## Données sensibles
+
+- Les documents générés (`run`, `output`) passent par le **registre des valeurs sensibles du run** : un secret échoé devient `***` dans le paquet.
+- Les **artefacts bruts ne sont jamais masqués** (byte-identité et empreintes obligent). Leur protection est la **provenance** : sans step anonymisant dans le run (`anonymizes: true` ou `pii-anonymize`), un avertissement explicite est émis et **scellé dans le manifeste** — couvert par la signature, donc lui-même inviolable.
+
+## FAQ
+
+**Pourquoi Ed25519 et pas HMAC ?**
+Le vérificateur n'a besoin d'aucun secret partagé — la clé publique se distribue librement. C'est l'exigence de valeur probante.
+
+**Comment générer les clés ?**
+`openssl genpkey -algorithm ed25519 -out key.pem` puis `openssl pkey -in key.pem -pubout -out key.pub`.
+
+**Pourquoi la tâche refuse-t-elle de s'exécuter hors `finally:` ?**
+Le moteur n'injecte le snapshot du run que dans la phase `finally:` — c'est ce qui garantit que le paquet documente un DAG terminé.
