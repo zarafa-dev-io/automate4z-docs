@@ -5,7 +5,7 @@ title: ssh
 
 # `ssh` — Remote command execution
 
-Runs a **command on a remote host over SSH** — the remote server's `shell`. Same contract as the [`shell`](shell) task: `run:` (command), outputs `stdout`/`stderr`/`exitCode`, line-by-line streaming to the run log (stdout as info, stderr as error, masked), `maxOutputBytes`. A non-zero exit code fails the step. Reuses the [profile connections model](sftp#profile-connections) and **shares the run's SSH session** with `sftp` steps on the same connection.
+Runs a **command on a remote host over SSH** — the remote server's `shell`. Same contract as the [`shell`](shell) task: `run:` (command), outputs `stdout`/`stderr`/`exitCode`, line-by-line streaming to the run log (stdout as info, stderr as error, masked), `maxOutputBytes`. A non-zero exit code fails the step. Reuses the [profile connections model](sftp#profile-connections): two `ssh` steps on the same named connection share a single SSH session for the run.
 
 ```yaml
 - id: notify_partner
@@ -33,7 +33,7 @@ Runs a **command on a remote host over SSH** — the remote server's `shell`. Sa
 
 ## Notes
 
-- **Shared session**: an `ssh` step and an `sftp` step on the same named connection reuse a single SSH session for the run.
+- **Shared session**: two `ssh` steps on the same named connection reuse a single SSH session, opened on first use and closed at run end. A connection carries **one** protocol: `sftp` and `ssh` are distinct connections (same host is fine), each with its own session.
 - Same guardrails as [`sftp`](sftp#profile-connections): `${secret:}` credentials only (refused inline at lint, `A4Z-CONN-001`), strict host verification.
 - **Fails on non-zero code**: like `shell`, a non-zero return code fails the step (`ExecError`), usable with `continueOnError` + `if:`.
 
