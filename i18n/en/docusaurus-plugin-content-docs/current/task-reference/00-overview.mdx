@@ -5,7 +5,7 @@ title: Overview
 
 # Built-in tasks
 
-automate4z ships **31 built-in tasks** in the `a4z` binary. They compose freely within a single workflow — that is the product's philosophy: each task does one thing, and the rich scenarios (testing a batch, impact-driven builds) are documented **compositions**, not black boxes.
+automate4z ships **32 built-in tasks** in the `a4z` binary. They compose freely within a single workflow — that is the product's philosophy: each task does one thing, and the rich scenarios (testing a batch, impact-driven builds) are documented **compositions**, not black boxes.
 
 ## Catalogue
 
@@ -75,6 +75,14 @@ The DBB-style incremental build pipeline, with nothing installed on the LPAR —
 | Task | Domain |
 |------|--------|
 | [`ai-prompt`](ai-prompt) | Consultative LLM call (profile-governed endpoints) |
+
+### Audit (1)
+
+The `finally:` block and the evidence task — see the [Collecting execution evidence](../guides/collecter-la-preuve) guide.
+
+| Task | Domain |
+|------|--------|
+| [`evidence-collect`](evidence-collect) | Ed25519-signed audit package, verifiable offline (`a4z evidence verify`) |
 
 :::note
 The `zos-db2` and `zos-endevor` tasks, initially planned, are **deferred**: they cannot be validated without access to an enterprise LPAR with the appropriate licensed products. In the meantime, DB2 access is possible via a batch job (`zos-jobs`) or `shell`.

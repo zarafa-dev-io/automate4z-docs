@@ -1,0 +1,74 @@
+---
+sidebar_position: 31
+title: evidence-collect
+---
+
+# `evidence-collect` — Tamper-evident audit package
+
+Aggregates execution proof — run outcome, step outputs, produced files — into a **deterministic, signed audit package** (`.a4zevidence`): a normalized zip archive carrying a versioned JSON manifest with a sha256 per element, signed with **Ed25519**. Place it in the [`finally:`](../workflow-spec/structure#the-finally-block) block: collection runs whatever the run's outcome — a failed run is a **nominal case**, precisely what an audit wants documented. Verification is offline, with the binary alone.
+
+```yaml
+finally:
+  - id: evidence
+    uses: evidence-collect
+    with:
+      include:
+        - kind: run
+        - kind: output
+          step: analyze
+        - kind: file
+          path: ./out/report.ndjson
+      output: audit/${{ workflow.runId }}.a4zevidence
+      sign:
+        algorithm: ed25519
+        key: stdin
+```
+
+```bash
+# The private key arrives via stdin, exclusively:
+a4z run audit.a4z.yaml < signing-key.pem
+# Third-party verification, offline, with the public key alone:
+a4z evidence verify audit/<runId>.a4zevidence --public-key audit.pub
+```
+
+## Inputs
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `include` | array | yes | Elements to collect, in order. `kind: run` (status, steps, timestamps, outputs), `kind: output` + `step:` (a step's outputs), `kind: file` + `path:` (a produced file, byte-identical — declared-but-missing fails loudly). |
+| `output` | string | yes | Path of the produced package. |
+| `max_inline_size` | integer or string | no | Inline-inclusion threshold for `kind: file` (default `10MB`, `KB`/`MB`/`GB` suffixes). Beyond it the file is stream-digested and the manifest seals reference + sha256 without the bytes — verifiable via `--external`. |
+| `sign` | object | no | Ed25519 signature: `key: stdin` **mandatorily** (a path or env var is refused at lint, `A4Z-EVIDENCE-001`). PEM PKCS#8 key (openssl) or hex seed, never logged. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `output` | string | Resolved package path. |
+| `elements` | integer | Elements collected. |
+| `size` | integer | Package size (bytes). |
+| `sha256` | string | Digest of the package file. |
+
+## Verification
+
+```
+a4z evidence verify <package> --public-key <key> [--external <id>=<path>]...
+```
+
+Manifest signature (any rewrite — status, digest, path — invalidates it), sha256 of every inline element, no undeclared entries. **Exit 0** when sound; **exit 1** identifying every altered element; exit 2 when verification could not run. `--external` stream-checks an artifact kept outside the package; an unsupplied reference is listed `NOT CHECKED` with the exact command to complete.
+
+## Sensitive data
+
+- Generated documents (`run`, `output`) pass through the **run's sensitive-value registry**: an echoed secret becomes `***` in the package.
+- **Raw artifacts are never masked** (byte-identity and digests demand it). Their protection is **provenance**: without an anonymizing step in the run (`anonymizes: true` or `pii-anonymize`), an explicit warning is emitted and **sealed in the manifest** — covered by the signature, hence itself tamper-evident.
+
+## FAQ
+
+**Why Ed25519 rather than HMAC?**
+The verifier needs no shared secret — the public key distributes freely. That is the probative-value requirement.
+
+**How do I generate keys?**
+`openssl genpkey -algorithm ed25519 -out key.pem` then `openssl pkey -in key.pem -pubout -out key.pub`.
+
+**Why does the task refuse to run outside `finally:`?**
+The engine only injects the run snapshot in the `finally:` phase — that is what guarantees the package documents a finished DAG.

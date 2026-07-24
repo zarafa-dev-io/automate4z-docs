@@ -16,6 +16,7 @@ a4z [command]
   docs        Show a task's documentation
   schema      Export JSON Schemas (workflow or task)
   secrets     Manage named secrets in the OS keyring
+  evidence    Verify audit evidence packages (evidence verify)
   plugins     Discover and manage external plugins
   app         App mode helpers (double-clickable launcher)
   version     Print the version
@@ -83,6 +84,25 @@ By default, `a4z lint` is a **pure function of the file**: same file, same outpu
 
 `--check-secrets` additionally enables the missing-secret warnings (`A4Z-SECRET-001`) — the same ones the Studio's PROBLEMS panel shows, same detection. Warnings only, never errors, and silently omitted when the keyring is unavailable. Combining `--strict --check-secrets` (fail on a missing secret) is an explicit workstation choice, not recommended in CI.
 :::
+
+---
+
+## `a4z evidence verify <package.a4zevidence>`
+
+Verifies an audit package produced by [`evidence-collect`](task-reference/evidence-collect) — **offline, with the public key alone**: Ed25519 signature of the manifest, sha256 of every inline element, no undeclared entries.
+
+```bash
+a4z evidence verify audit/run.a4zevidence --public-key audit.pub
+a4z evidence verify audit/run.a4zevidence --public-key audit.pub --external e2=./out/bigdata.bin
+```
+
+| Output | Meaning |
+|--------|---------|
+| exit 0 | Package sound (unsupplied references are listed `NOT CHECKED`). |
+| exit 1 | Tampering detected — every altered element identified (`TAMPERED e1 (…): …`). |
+| exit 2 | Verification could not run (unreadable package, unsigned, bad key). |
+
+`--external <id>=<path>` (repeatable) stream-checks an artifact kept outside the package (beyond `max_inline_size`) against the digest sealed by the signed manifest.
 
 ---
 

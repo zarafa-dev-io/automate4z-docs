@@ -53,6 +53,7 @@ outputs:                      # optionnel — sorties du workflow
 | `env` | objet | non | v1.0 | Variables d'environnement injectées dans tous les steps. |
 | `defaults` | objet | non | v1.0 | Valeurs par défaut pour les steps. |
 | `steps` | tableau | oui | v1.0 | Au moins un step. |
+| `finally` | tableau | non | v1.x | Steps garantis, exécutés après la fin du DAG principal — succès, échec ou annulation (voir ci-dessous). |
 | `outputs` | objet | non | v1.0 | Valeurs exposées en sortie du workflow. |
 | `secrets` | objet | non | v1.x | Déclaration des secrets requis. |
 | `matrix` | objet | non | v1.x | Exécution paramétrée multi-valeurs. |
@@ -60,6 +61,24 @@ outputs:                      # optionnel — sorties du workflow
 | `triggers` | objet | non | v2 | Déclencheurs (cron, webhook…). Réservé. |
 
 Tout champ non listé doit être rejeté par le linter en mode strict.
+
+## Le bloc `finally:`
+
+Les steps de `finally:` s'exécutent **séquentiellement, dans l'ordre de déclaration, après la fin du DAG principal** — succès, échec ou annulation (Ctrl+C compris : la phase est détachée de l'annulation du run). C'est le support de la collecte de preuves ([`evidence-collect`](../task-reference/evidence-collect)), des teardowns et des notifications d'échec.
+
+```yaml
+finally:
+  - id: notify_failure
+    uses: notify
+    if: ${{ failure() }}
+    with: { channel: email, subject: "Run ${{ run.status }} — step ${{ run.failed_step }}" }
+  - id: teardown
+    run: rm -rf ./work
+```
+
+- Un step `finally:` est un step ordinaire **sans `needs`** (erreur `A4Z-FINALLY-001` sinon) ; un step du DAG principal ne peut pas dépendre d'un step `finally:`, et l'espace d'ids `steps.*` est partagé.
+- **Un échec dans `finally:` marque le run en échec sans arrêter les steps `finally:` suivants.**
+- Les steps `finally:` accèdent au contexte [`run.*`](expressions#contextes-disponibles) ; `failure()` y reflète le run entier. À la reprise (`--resume`), ils se ré-exécutent toujours.
 
 ## Bloc `a4z`
 

@@ -19,6 +19,7 @@ Expressions inside `${{ }}` are evaluated by the runtime at step execution time.
 | `matrix.*` | Matrix variables (v1.x) | in a matrix run |
 | `workflow.*` | Metadata (`name`, `runId`, `startedAt`) | everywhere |
 | `runner.*` | Runner info (`os`, `arch`, `cwd`) | everywhere |
+| `run.*` | The main DAG's outcome: `status`, `failed_step`, `started_at`, `ended_at` | `finally:` steps only |
 
 ## Supported operators
 
