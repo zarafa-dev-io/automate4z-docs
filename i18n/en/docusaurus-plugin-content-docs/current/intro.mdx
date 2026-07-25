@@ -29,7 +29,7 @@ automate4z solves this with a single YAML file, a single binary, and a consisten
 | **Incremental build** | `source-scan` → `build-impact` → `zos-build`: the DBB-style pipeline, [with nothing installed on the LPAR](guides/build-and-test) |
 | **DAG execution** | Step dependencies resolved automatically; independent steps run in parallel |
 | **`$\{{ }}` expressions** | Context interpolation (inputs, outputs, env, runner) with built-in functions |
-| **z/OSMF profiles** | LPAR connections through Zowe profiles, OS keyring or env variables; secrets never in the YAML |
+| **[The profile](profile)** | AI, transfer connections, notifications; z/OS connection through Zowe profiles, OS keyring or `A4Z_ZOS_*` env variables; secrets never in the YAML |
 | **AI under governance** | [`ai-prompt`](task-reference/ai-prompt): an LLM explains an abend or summarizes a listing — profile-governed endpoints, anonymized-by-construction context, never decision-making |
 | **Studio & App mode** | `a4z serve` opens a local web UI ([the Studio](studio/overview)); `a4z run --ui` opens a locked per-workflow operator surface |
 | **External plugins** | Extra tasks shipped as `a4z-plugin-*` binaries, discovered in dedicated, lockable directories (`a4z plugins`) |

@@ -1,8 +1,13 @@
+import {createRequire} from 'node:module';
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
+
+// Local, offline search index (built at compile time) — no external service,
+// suitable for a self-hosted/private site (no Algolia crawler).
+const require = createRequire(import.meta.url);
 
 const config: Config = {
   title: 'automate4z',
@@ -55,6 +60,19 @@ const config: Config = {
           customCss: './src/css/custom.css',
         },
       } satisfies Preset.Options,
+    ],
+  ],
+
+  themes: [
+    [
+      require.resolve('@easyops-cn/docusaurus-search-local'),
+      {
+        hashed: true,
+        indexBlog: false,
+        docsRouteBasePath: '/docs',
+        language: ['fr', 'en'],
+        highlightSearchTermsOnTargetPage: true,
+      },
     ],
   ],
 

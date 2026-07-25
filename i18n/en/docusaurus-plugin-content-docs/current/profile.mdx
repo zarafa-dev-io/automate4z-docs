@@ -1,0 +1,219 @@
+---
+sidebar_position: 2.5
+title: The profile
+---
+
+# The profile
+
+A **profile** holds the configuration specific to an environment: AI endpoints, transfer connections (SFTP/SSH/S3/FTP), notifications, product settings. It lives **outside your workflows** — a workflow stays portable from one machine to another, and the profile carries the hosts, credentials and machine-specific details.
+
+## Where and how
+
+The profile is a YAML file:
+
+```
+~/.automate4z/profiles/<name>.yml
+```
+
+- The default profile is **`default`** (`~/.automate4z/profiles/default.yml`).
+- Pick another profile: `--profile <name>` on any command (`a4z run --profile prod workflow.yml`).
+- A **missing** profile is not an error: each section falls back to its defaults. A **malformed** profile is an error.
+
+Each section is read by the relevant component (`ai:` by `ai-prompt`, `connections:` by the transfer tasks, `notify:` by `notify`…); unknown keys are ignored.
+
+## Secrets: never in the clear
+
+The cross-cutting rule: **a credential is never written in the clear** in the profile. Store the value in the **OS keyring** and reference it with `${secret:NAME}`.
+
+```sh
+a4z secrets set PARTNER_SSH_KEY   # prompts for the value (or reads stdin)
+a4z secrets list
+a4z secrets delete PARTNER_SSH_KEY
+```
+
+In the profile:
+
+```yaml
+auth:
+  key: ${secret:PARTNER_SSH_KEY}   # a reference, never the key itself
+```
+
+An inline value where a reference is expected is **refused at lint** (`A4Z-CONN-001` for connections) and at execution. Resolved values are **masked** in logs and history.
+
+:::caution
+The only exception is the `notify:` section (see below), which still reads its credentials **literally** — restrict the profile file's permissions in that case.
+:::
+
+## `ai:` — LLM endpoints
+
+Consumed by the [`ai-prompt`](task-reference/ai-prompt) task. Declares the governed LLM endpoints, their credentials and the context guardrails.
+
+```yaml
+ai:
+  enabled: true
+  context_files_policy: free        # free (default) | anonymized-only
+  max_context_bytes: 262144         # total context-files budget (default 256 KiB)
+  endpoints:
+    - name: prod-claude
+      provider: anthropic           # openai-compatible | anthropic | openai | gemini
+      api_key: ${secret:ANTHROPIC_KEY}
+      models: [claude-sonnet-4]     # optional allowlist
+    - name: on-prem
+      provider: openai-compatible   # the only provider where base_url is allowed
+      base_url: https://llm.internal.example/v1
+      api_key: ${secret:INTERNAL_LLM_KEY}
+```
+
+| Field | Description |
+|-------|-------------|
+| `enabled` | Enables the `ai-prompt` task. |
+| `context_files_policy` | `free` (default) or `anonymized-only` — under the latter, every `context_files` entry must come from a step with `anonymizes: true`. |
+| `max_context_bytes` | Total context-files budget (default 256 KiB). |
+| `endpoints[].name` | Name referenced by the `ai-prompt` step. |
+| `endpoints[].provider` | `openai-compatible`, `anthropic`, `openai`, `gemini`. |
+| `endpoints[].base_url` | Base URL — **allowed only** for `openai-compatible` (a named provider can never be redirected). |
+| `endpoints[].api_key` | **`${secret:NAME}` only.** |
+| `endpoints[].models` | Model allowlist (optional). |
+
+## `connections:` — SFTP / SSH / S3 / FTP transfers
+
+Consumed by the [`sftp`](task-reference/sftp), [`ssh`](task-reference/ssh), [`s3`](task-reference/s3), [`ftp`](task-reference/ftp) tasks. Each entry is a named connection, referenced by `connection:` in the step.
+
+```yaml
+connections:
+  partner-sftp:
+    protocol: sftp
+    host: sftp.partner.example
+    port: 22
+    user: a4zbot
+    auth:
+      key: ${secret:PARTNER_SSH_KEY}     # or password: ${secret:...}
+    host_fingerprint: "SHA256:hQ+8P…"    # fingerprint pin (recommended)
+    # known_hosts: ~/.ssh/known_hosts    # alternative to the pin
+    # host_key: insecure-skip            # tolerated but loud, never silent
+
+  partner-ssh:                            # one connection = one protocol
+    protocol: ssh
+    host: sftp.partner.example
+    user: a4zbot
+    auth:
+      key: ${secret:PARTNER_SSH_KEY}
+
+  archive-s3:
+    protocol: s3
+    endpoint: https://s3.internal.example:9000  # https:// (TLS) | http:// (clear) | bare host (TLS)
+    region: eu-west-1
+    bucket: audit-2026
+    access_key: ${secret:S3_ACCESS}
+    secret_key: ${secret:S3_SECRET}
+
+  partner-ftp:
+    protocol: ftp
+    host: ftp.partner.example
+    port: 21
+    user: a4zbot
+    tls: explicit                         # none | explicit | implicit
+    auth:
+      password: ${secret:PARTNER_FTP_PW}
+```
+
+Key points:
+
+- **`${secret:}` credentials only** (inline values refused at lint).
+- **Strict host verification** (SSH/SFTP): `host_fingerprint` (pin) or `known_hosts`. `host_key: insecure-skip` exists but warns on every run — never silent trust-on-first-use.
+- **One protocol per connection**: `sftp` and `ssh` to the same host are two distinct entries.
+- **S3** on-premise first-class: `endpoint` `https://`/`http://`/bare host; no silent TLS fallback.
+- **FTP**: `tls: none|explicit|implicit`, no silent fallback; `none` warns (cleartext credentials).
+
+## `notify:` — email and webhook
+
+Consumed by the [`notify`](task-reference/notify) task.
+
+```yaml
+notify:
+  email:
+    smtp_host: smtp.example.com
+    smtp_port: 587
+    smtp_tls: starttls           # none | starttls | tls
+    smtp_user: a4z@example.com
+    smtp_password: "…"           # literal value (see the warning)
+    from: automate4z@example.com
+  webhook:
+    default_url: https://hooks.example.com/a4z
+    timeout: 10s
+    headers:
+      X-Source: automate4z
+```
+
+:::caution Literal credentials
+Unlike `ai:` and `connections:`, the `notify:` section reads `smtp_password` (and `headers`) **as-is** — `${secret:}` references are not resolved there. Restrict the profile file's permissions (`chmod 600`), or pass the secret at runtime via an `A4Z_SECRET_*` environment variable in the step's `with:`.
+:::
+
+## z/OS — via Zowe and environment variables
+
+z/OS credentials **do not live in the a4z profile**. `a4z` reuses the **Zowe** ecosystem and environment variables, resolved in this order (first one set wins):
+
+1. **CLI flags**: `--host`, `--port`, `--zos-profile <name>`, `--zowe-config <path>`, `--reject-unauthorized`…
+2. **Environment variables**: `A4Z_ZOS_HOST`, `A4Z_ZOS_USER`, `A4Z_ZOS_PASSWORD`, `A4Z_ZOS_TOKEN`, `A4Z_ZOS_PORT` (default `443`), `A4Z_ZOS_REJECT_UNAUTHORIZED`.
+3. **Named Zowe profile** then the **default Zowe profile** (`zowe.config.json`, secure credentials read from the Zowe keyring).
+
+```sh
+export A4Z_ZOS_HOST=zosmf.example.com
+export A4Z_ZOS_USER=Z12345
+export A4Z_ZOS_PASSWORD='…'          # or an already-configured Zowe profile
+a4z run pipeline-zos.a4z.yaml
+```
+
+So a machine that already has Zowe CLI configured works with no extra a4z z/OS configuration.
+
+## `history:` and `studio:` — product behavior
+
+```yaml
+history:
+  keep_runs: 50          # keep only the last 50 runs; 0 = unlimited
+
+studio:
+  autosave_before_run: true   # the Studio saves the open workflow before a run (default: enabled)
+```
+
+`studio:` is read only by the Studio (the web UI); the CLI ignores it.
+
+## Full example
+
+```yaml
+# ~/.automate4z/profiles/default.yml
+history:
+  keep_runs: 100
+
+ai:
+  enabled: true
+  endpoints:
+    - name: prod-claude
+      provider: anthropic
+      api_key: ${secret:ANTHROPIC_KEY}
+
+connections:
+  partner-sftp:
+    protocol: sftp
+    host: sftp.partner.example
+    user: a4zbot
+    auth:
+      key: ${secret:PARTNER_SSH_KEY}
+    host_fingerprint: "SHA256:hQ+8P…"
+  archive-s3:
+    protocol: s3
+    endpoint: https://s3.internal.example:9000
+    region: eu-west-1
+    bucket: audit-2026
+    access_key: ${secret:S3_ACCESS}
+    secret_key: ${secret:S3_SECRET}
+
+notify:
+  email:
+    smtp_host: smtp.example.com
+    smtp_port: 587
+    smtp_tls: starttls
+    smtp_user: a4z@example.com
+    smtp_password: "…"
+    from: automate4z@example.com
+```
