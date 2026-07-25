@@ -111,10 +111,6 @@ Les outputs d'une tâche sont accessibles via `${{ steps.<id>.outputs.<nom> }}`.
 
 ## Itération : `forEach` (v1.x)
 
-:::caution Pas encore disponible
-`forEach` (avec `as` et `parallel`) est **planifié pour la v1.x** et n'existe pas encore dans les versions 0.x. L'utiliser fait échouer le parsing (`"forEach" is a planned v1.x feature and is not yet available in this version`). En attendant, répétez le step pour chaque élément connu, ou générez le workflow. Cette section décrit le comportement cible.
-:::
-
 Exécute la tâche une fois par élément d'une collection :
 
 ```yaml
@@ -145,3 +141,10 @@ Les outputs du step deviennent un array dont chaque élément correspond à une 
   run: |
     echo "Compiled ${{ length(steps.compile-all.outputs) }} modules"
 ```
+
+**Sémantique** :
+
+- L'expression `forEach` doit évaluer à un **array** ; toute autre valeur échoue le step. Une collection **vide** = zéro itération (succès).
+- L'ordre des sorties suit **la collection**, même avec `parallel > 1` (jamais l'ordre d'achèvement) : `steps.<id>.outputs[i]`.
+- `parallel` : non défini ou `1` → séquentiel ; `N` → jusqu'à N simultanées ; `0` → toutes, bornées par le `--parallelism` global.
+- **Statut** : toutes les itérations s'exécutent, puis le step échoue si l'une échoue ; le `timeout` du step borne chaque itération. À la reprise (`--resume`), le step re-tourne entièrement.
