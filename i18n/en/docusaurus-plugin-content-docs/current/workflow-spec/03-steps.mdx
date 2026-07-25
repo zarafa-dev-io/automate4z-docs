@@ -39,9 +39,9 @@ steps:
 | `timeout` | duration | no | v1.0 | Max duration (e.g. `30s`, `5m`, `1h`). |
 | `continueOnError` | boolean | no | v1.0 | If `true`, failure does not stop the workflow. |
 | `retry` | object | no | v1.x | Retry policy. |
-| `forEach` | expression | no | v1.x | Iterate over a collection. |
-| `as` | string | no | v1.x | Iteration variable name (default `item`). |
-| `parallel` | integer | no | v1.x | Iteration parallelism. |
+| `forEach` | expression | no | v1.0 | Iterate over a collection. |
+| `as` | string | no | v1.0 | Iteration variable name (default `item`). |
+| `parallel` | integer | no | v1.0 | Iteration parallelism. |
 
 ## `uses` vs `run`
 
@@ -109,7 +109,7 @@ Task outputs are accessible via `${{ steps.<id>.outputs.<name> }}`.
     on: [failure, timeout]
 ```
 
-## Iteration: `forEach` (v1.x)
+## Iteration: `forEach` (v1.0)
 
 Executes the task once per element in a collection:
 

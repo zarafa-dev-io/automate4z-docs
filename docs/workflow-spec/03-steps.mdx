@@ -39,9 +39,9 @@ steps:
 | `timeout` | duration | non | v1.0 | Durée max (ex: `30s`, `5m`, `1h`). |
 | `continueOnError` | boolean | non | v1.0 | Si `true`, l'échec ne stoppe pas le workflow. |
 | `retry` | objet | non | v1.x | Politique de retry. |
-| `forEach` | expression | non | v1.x | Itération sur une collection. |
-| `as` | string | non | v1.x | Nom de la variable d'itération (défaut `item`). |
-| `parallel` | integer | non | v1.x | Parallélisme des itérations. |
+| `forEach` | expression | non | v1.0 | Itération sur une collection. |
+| `as` | string | non | v1.0 | Nom de la variable d'itération (défaut `item`). |
+| `parallel` | integer | non | v1.0 | Parallélisme des itérations. |
 
 ## `uses` vs `run`
 
@@ -109,7 +109,7 @@ Les outputs d'une tâche sont accessibles via `${{ steps.<id>.outputs.<nom> }}`.
     on: [failure, timeout]
 ```
 
-## Itération : `forEach` (v1.x)
+## Itération : `forEach` (v1.0)
 
 Exécute la tâche une fois par élément d'une collection :
 
