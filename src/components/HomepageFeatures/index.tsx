@@ -46,7 +46,7 @@ const FeatureList: FeatureItem[] = [
     ),
   },
   {
-    title: <Translate id="homepage.feature.tasks.title">37 tâches built-in</Translate>,
+    title: <Translate id="homepage.feature.tasks.title">38 tâches built-in</Translate>,
     icon: '🧰',
     tint: styles.iconViolet,
     to: '/docs/task-reference/overview',

@@ -1,0 +1,202 @@
+---
+sidebar_position: 37
+title: jira
+---
+
+# `jira` — Issues Jira (Cloud + Data Center)
+
+Pilote une instance **Jira** — l'outil de ticketing omniprésent côté mainframe (incidents, changes, suivi de release) — depuis un workflow. Une seule tâche `jira` avec un champ `action:` couvrant les **deux déploiements** : **Jira Cloud** (API REST v3, corps **ADF**) et **Jira Data Center / Server** (API REST v2, corps texte — le cas dominant en banque, auto-hébergé derrière un proxy à certificat interne).
+
+```yaml
+- id: open_incident
+  uses: jira
+  with:
+    endpoint: prod
+    action: create
+    project: INC
+    issuetype: Incident
+    summary: "Batch TRAITEMENT en échec — run ${{ workflow.runId }}"
+    description: |
+      Le job a échoué.
+      Verdict : ${{ steps.diagnose.outputs.verdict }}
+```
+
+L'API Jira est du **HTTP/JSON pur** : la tâche s'appuie sur la bibliothèque standard, **zéro dépendance** — pas de SDK Jira.
+
+## Le bloc `jira:` du profil
+
+Les paramètres d'instance vivent dans un **bloc `jira:` du profil** (`~/.automate4z/profiles/<profil>.yml`), le miroir des endpoints `ai:`. **Jamais dans le workflow.**
+
+```yaml
+# ~/.automate4z/profiles/default.yml
+jira:
+  endpoints:
+    - name: prod
+      flavor: datacenter                 # cloud | datacenter (obligatoire, jamais deviné)
+      base_url: https://jira.banque.example
+      auth:
+        token: ${secret:JIRA_PAT}        # PAT → Bearer
+        # ou, pour l'authentification Basic Data Center :
+        # user: svc-a4z
+        # password: ${secret:JIRA_PW}
+      tls:                               # optionnel, mêmes clés que la tâche http
+        caFile: ./certs/jira-ca.pem      # CA interne on-premise
+    - name: cloud
+      flavor: cloud
+      base_url: https://acme.atlassian.net
+      auth:
+        email: bot@acme.com
+        token: ${secret:JIRA_CLOUD_TOKEN}  # API token → Basic email:token
+```
+
+- **`flavor` explicite, jamais déduit de l'URL** : il détermine la version d'API (`/rest/api/3` vs `/rest/api/2`), la forme d'authentification et le format de corps. Une URL peut être derrière un proxy trompeur — on ne devine pas.
+  - **cloud** : authentification **Basic** `email:token` (API token). Corps de description/commentaire converti en **ADF** par le moteur.
+  - **datacenter** : **Bearer** (PAT) si seul `token:` est fourni, sinon **Basic** `user:password`. Corps texte transmis tel quel.
+- **Credentials `${secret:}` uniquement** — résolus depuis le trousseau, masqués dans les logs et artefacts. Une valeur en clair est **refusée au lint** (`A4Z-JIRA-001`) et à l'exécution.
+- **TLS on-premise** : bloc `tls:` identique à la tâche [`http`](http) (`caFile`, `clientCertFile`/`clientKeyFile`, `insecureSkipVerify` **toléré mais bruyant à chaque run**), `MinVersion` TLS 1.2, aucun repli silencieux.
+
+## Corps de texte et ADF
+
+L'utilisateur écrit du **texte simple** (multi-ligne bienvenu) pour `description` et `comment`. Le moteur le convertit en **ADF** (Atlassian Document Format) pour Jira Cloud (v3) et le transmet tel quel pour Data Center (v2) — l'utilisateur **ne manipule jamais d'ADF à la main**. Une ligne vide sépare deux paragraphes.
+
+## `action: create` — créer une issue
+
+```yaml
+- id: open_incident
+  if: ${{ failure() }}
+  uses: jira
+  with:
+    endpoint: prod
+    action: create
+    project: INC
+    issuetype: Incident
+    summary: "Batch en échec — run ${{ workflow.runId }}"
+    description: |
+      Le job a échoué. Verdict : ${{ steps.diagnose.outputs.verdict }}
+    fields:                              # optionnel : champs bruts Jira additionnels
+      priority: { name: High }
+      labels: [batch, nuit]
+```
+
+Le bloc `fields:` optionnel porte des champs Jira bruts (priorité, assigné, labels, champs personnalisés) ; les champs dédiés (`project`/`issuetype`/`summary`/`description`) l'emportent en cas de collision.
+
+:::note Non-idempotent
+`create` crée **une nouvelle issue à chaque run** (comme `notify` ou les transferts). La déduplication *chercher-avant-créer* (`dedup_jql:`) est prévue en v1.x.
+:::
+
+| Champ | Type | Requis | Description |
+|-------|------|--------|-------------|
+| `endpoint` | string | oui | Endpoint nommé du profil. |
+| `action` | string | oui | `create`. |
+| `project` | string | oui | Clé du projet, ex. `INC`. |
+| `issuetype` | string | oui | Nom du type d'issue, ex. `Incident`. |
+| `summary` | string | oui | Titre de l'issue. |
+| `description` | string | non | Corps en texte simple (converti en ADF pour Cloud). |
+| `fields` | object | non | Champs Jira bruts additionnels. |
+
+**Outputs** : `key` (ex. `INC-42`), `id`, `url` (`<base_url>/browse/<key>`).
+
+## `action: transition` — faire transiter une issue
+
+```yaml
+- id: mark_deployed
+  uses: jira
+  with:
+    endpoint: prod
+    action: transition
+    key: ${{ inputs.change_ticket }}
+    to: Deployed                         # nom de la transition, résolu en id
+    comment: "Déployé par le run ${{ workflow.runId }}"   # optionnel
+```
+
+`to:` est un **nom de transition**, résolu en id via l'endpoint des transitions disponibles — l'utilisateur ne manipule **jamais** d'ids. Correspondance exacte d'abord, puis insensible à la casse. Si la transition n'est **pas disponible** depuis le statut courant, le step échoue avec un message **listant les transitions disponibles**. Un `comment:` optionnel est joint à la transition.
+
+| Champ | Type | Requis | Description |
+|-------|------|--------|-------------|
+| `endpoint` | string | oui | Endpoint nommé du profil. |
+| `action` | string | oui | `transition`. |
+| `key` | string | oui | Clé de l'issue à transiter. |
+| `to` | string | oui | Nom de la transition cible (résolu en id). |
+| `comment` | string | non | Commentaire joint à la transition. |
+
+**Outputs** : `key`, `url`, `status` (statut résultant).
+
+## `action: comment` — commenter une issue
+
+```yaml
+- id: attach_report
+  uses: jira
+  with:
+    endpoint: prod
+    action: comment
+    key: ${{ inputs.ticket }}
+    comment: |
+      Rapport de test du run ${{ workflow.runId }} : ${{ steps.tests.outputs.summary }}
+```
+
+| Champ | Type | Requis | Description |
+|-------|------|--------|-------------|
+| `endpoint` | string | oui | Endpoint nommé du profil. |
+| `action` | string | oui | `comment`. |
+| `key` | string | oui | Clé de l'issue à commenter. |
+| `comment` | string | oui | Corps du commentaire (texte, converti en ADF pour Cloud). |
+
+**Outputs** : `key`, `url`, `commentId`.
+
+## `action: get` — lire une issue
+
+```yaml
+- id: check_change
+  uses: jira
+  with:
+    endpoint: prod
+    action: get
+    key: CHG-4521
+    fields: [status, summary]            # optionnel : restreint les champs lus
+```
+
+Sert notamment aux **gates conditionnelles** : `if: ${{ steps.check_change.outputs.status == 'Approved' }}`.
+
+| Champ | Type | Requis | Description |
+|-------|------|--------|-------------|
+| `endpoint` | string | oui | Endpoint nommé du profil. |
+| `action` | string | oui | `get`. |
+| `key` | string | oui | Clé de l'issue. |
+| `fields` | array | non | Restreint la lecture à ces champs (tous si absent). |
+
+**Outputs** : `key`, `id`, `url`, `status` (`fields.status.name`), `fields` (bruts).
+
+## `action: search` — rechercher des issues (JQL)
+
+```yaml
+- id: open_incidents
+  uses: jira
+  with:
+    endpoint: prod
+    action: search
+    jql: project = INC AND status = Open ORDER BY created DESC
+    maxResults: 100                      # plafond du nombre d'issues renvoyées (défaut 50)
+```
+
+La **pagination est transparente** : le moteur enchaîne les pages jusqu'à `maxResults`. Si **plus d'issues correspondent** que le plafond, `truncated` vaut `true` et un **warning est loggé** — la troncature n'est **jamais silencieuse**.
+
+| Champ | Type | Requis | Description |
+|-------|------|--------|-------------|
+| `endpoint` | string | oui | Endpoint nommé du profil. |
+| `action` | string | oui | `search`. |
+| `jql` | string | oui | Requête JQL. |
+| `maxResults` | integer | non | Plafond du nombre d'issues renvoyées (défaut 50). |
+
+**Outputs** : `issues` (`{ key, summary, status }` par entrée), `count`, `total` (correspondances JQL), `truncated`.
+
+## Erreurs
+
+Les erreurs Jira sont **typées et lisibles** : un **400** nomme le champ fautif (`summary: Summary is required`), **401/403** signalent l'authentification/les permissions, **404** l'issue ou le projet absent. Le message porte le code HTTP et le détail renvoyé par Jira.
+
+## Exemple canonique
+
+`examples/jira-incident-from-batch.a4z.yaml` (dans le dépôt) enchaîne les cinq actions dans le scénario réel : un batch z/OS en échec ouvre un incident, y attache son diagnostic et fait avancer le ticket de change.
+
+## Non-buts (v1)
+
+Pièces jointes, liens/sous-tâches, champs personnalisés complexes, Agile/sprints/boards, OAuth 2.0 (3LO), webhooks entrants (a4z est one-shot, pas un serveur).

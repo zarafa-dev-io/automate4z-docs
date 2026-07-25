@@ -1,0 +1,202 @@
+---
+sidebar_position: 37
+title: jira
+---
+
+# `jira` — Jira issues (Cloud + Data Center)
+
+Drive a **Jira** instance — the ticketing tool that is everywhere on the mainframe side (incidents, changes, release tracking) — from a workflow. A single `jira` task with an `action:` field covering **both deployments**: **Jira Cloud** (REST API v3, **ADF** bodies) and **Jira Data Center / Server** (REST API v2, text bodies — the dominant case in banking: self-hosted, behind a proxy with an internal certificate).
+
+```yaml
+- id: open_incident
+  uses: jira
+  with:
+    endpoint: prod
+    action: create
+    project: INC
+    issuetype: Incident
+    summary: "Batch TRAITEMENT failed — run ${{ workflow.runId }}"
+    description: |
+      The job failed.
+      Verdict: ${{ steps.diagnose.outputs.verdict }}
+```
+
+The Jira API is plain **HTTP/JSON**: the task uses the standard library, **zero dependencies** — no Jira SDK.
+
+## The `jira:` profile block
+
+Instance settings live in a **`jira:` block of the profile** (`~/.automate4z/profiles/<profile>.yml`), mirroring the `ai:` endpoints. **Never in the workflow.**
+
+```yaml
+# ~/.automate4z/profiles/default.yml
+jira:
+  endpoints:
+    - name: prod
+      flavor: datacenter                 # cloud | datacenter (required, never guessed)
+      base_url: https://jira.bank.example
+      auth:
+        token: ${secret:JIRA_PAT}        # PAT → Bearer
+        # or, for Data Center Basic auth:
+        # user: svc-a4z
+        # password: ${secret:JIRA_PW}
+      tls:                               # optional, same keys as the http task
+        caFile: ./certs/jira-ca.pem      # on-premise internal CA
+    - name: cloud
+      flavor: cloud
+      base_url: https://acme.atlassian.net
+      auth:
+        email: bot@acme.com
+        token: ${secret:JIRA_CLOUD_TOKEN}  # API token → Basic email:token
+```
+
+- **`flavor` is explicit, never inferred from the URL**: it selects the API version (`/rest/api/3` vs `/rest/api/2`), the auth form and the body format. A URL may sit behind a misleading proxy — we do not guess.
+  - **cloud**: **Basic** `email:token` auth (API token). Description/comment bodies converted to **ADF** by the engine.
+  - **datacenter**: **Bearer** (PAT) when only `token:` is set, otherwise **Basic** `user:password`. Text bodies passed through.
+- **Credentials are `${secret:}` references only** — resolved from the keyring, masked in logs and artifacts. An inline value is **refused at lint** (`A4Z-JIRA-001`) and at run time.
+- **On-premise TLS**: a `tls:` block identical to the [`http`](http) task (`caFile`, `clientCertFile`/`clientKeyFile`, `insecureSkipVerify` **tolerated but loud on every run**), `MinVersion` TLS 1.2, no silent fallback.
+
+## Text bodies and ADF
+
+You write **plain text** (multi-line welcome) for `description` and `comment`. The engine converts it to **ADF** (Atlassian Document Format) for Jira Cloud (v3) and passes it through for Data Center (v2) — you **never author ADF by hand**. A blank line separates two paragraphs.
+
+## `action: create` — create an issue
+
+```yaml
+- id: open_incident
+  if: ${{ failure() }}
+  uses: jira
+  with:
+    endpoint: prod
+    action: create
+    project: INC
+    issuetype: Incident
+    summary: "Batch failed — run ${{ workflow.runId }}"
+    description: |
+      The job failed. Verdict: ${{ steps.diagnose.outputs.verdict }}
+    fields:                              # optional: extra raw Jira fields
+      priority: { name: High }
+      labels: [batch, night]
+```
+
+The optional `fields:` block carries raw Jira fields (priority, assignee, labels, custom fields); the dedicated fields (`project`/`issuetype`/`summary`/`description`) win on conflict.
+
+:::note Non-idempotent
+`create` creates **a new issue on every run** (like `notify` or transfers). Search-before-create dedup (`dedup_jql:`) is planned for v1.x.
+:::
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `endpoint` | string | yes | Named profile endpoint. |
+| `action` | string | yes | `create`. |
+| `project` | string | yes | Project key, e.g. `INC`. |
+| `issuetype` | string | yes | Issue type name, e.g. `Incident`. |
+| `summary` | string | yes | Issue summary (title). |
+| `description` | string | no | Plain-text body (converted to ADF for Cloud). |
+| `fields` | object | no | Extra raw Jira fields. |
+
+**Outputs**: `key` (e.g. `INC-42`), `id`, `url` (`<base_url>/browse/<key>`).
+
+## `action: transition` — move an issue
+
+```yaml
+- id: mark_deployed
+  uses: jira
+  with:
+    endpoint: prod
+    action: transition
+    key: ${{ inputs.change_ticket }}
+    to: Deployed                         # transition name, resolved to its id
+    comment: "Deployed by run ${{ workflow.runId }}"   # optional
+```
+
+`to:` is a **transition name**, resolved to its id via the available-transitions endpoint — you **never** handle transition ids. Exact match first, then case-insensitive. When the transition is **not available** from the current status, the step fails with a message **listing the available transitions**. An optional `comment:` is attached to the transition.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `endpoint` | string | yes | Named profile endpoint. |
+| `action` | string | yes | `transition`. |
+| `key` | string | yes | Key of the issue to transition. |
+| `to` | string | yes | Target transition name (resolved to its id). |
+| `comment` | string | no | Comment attached to the transition. |
+
+**Outputs**: `key`, `url`, `status` (resulting status).
+
+## `action: comment` — comment on an issue
+
+```yaml
+- id: attach_report
+  uses: jira
+  with:
+    endpoint: prod
+    action: comment
+    key: ${{ inputs.ticket }}
+    comment: |
+      Test report for run ${{ workflow.runId }}: ${{ steps.tests.outputs.summary }}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `endpoint` | string | yes | Named profile endpoint. |
+| `action` | string | yes | `comment`. |
+| `key` | string | yes | Key of the issue to comment on. |
+| `comment` | string | yes | Comment body (text, converted to ADF for Cloud). |
+
+**Outputs**: `key`, `url`, `commentId`.
+
+## `action: get` — read an issue
+
+```yaml
+- id: check_change
+  uses: jira
+  with:
+    endpoint: prod
+    action: get
+    key: CHG-4521
+    fields: [status, summary]            # optional: restrict the fields read
+```
+
+Useful for **conditional gates**: `if: ${{ steps.check_change.outputs.status == 'Approved' }}`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `endpoint` | string | yes | Named profile endpoint. |
+| `action` | string | yes | `get`. |
+| `key` | string | yes | Issue key. |
+| `fields` | array | no | Restrict the read to these fields (all when omitted). |
+
+**Outputs**: `key`, `id`, `url`, `status` (`fields.status.name`), `fields` (raw).
+
+## `action: search` — find issues (JQL)
+
+```yaml
+- id: open_incidents
+  uses: jira
+  with:
+    endpoint: prod
+    action: search
+    jql: project = INC AND status = Open ORDER BY created DESC
+    maxResults: 100                      # cap on the number of issues returned (default 50)
+```
+
+**Pagination is transparent**: the engine walks the pages up to `maxResults`. When **more issues match** than the cap, `truncated` is `true` and a **warning is logged** — the truncation is **never silent**.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `endpoint` | string | yes | Named profile endpoint. |
+| `action` | string | yes | `search`. |
+| `jql` | string | yes | JQL query. |
+| `maxResults` | integer | no | Cap on the number of issues returned (default 50). |
+
+**Outputs**: `issues` (`{ key, summary, status }` per entry), `count`, `total` (JQL matches), `truncated`.
+
+## Errors
+
+Jira errors are **typed and readable**: a **400** names the offending field (`summary: Summary is required`), **401/403** signal auth/permissions, **404** a missing issue or project. The message carries the HTTP code and the detail Jira returned.
+
+## Canonical example
+
+`examples/jira-incident-from-batch.a4z.yaml` (in the repository) chains all five actions in the real scenario: a failed z/OS batch opens an incident, attaches its diagnosis and advances the change ticket.
+
+## Non-goals (v1)
+
+Attachments, issue links/subtasks, complex custom fields, Agile/sprints/boards, OAuth 2.0 (3LO), inbound webhooks (a4z is one-shot, not a server).
