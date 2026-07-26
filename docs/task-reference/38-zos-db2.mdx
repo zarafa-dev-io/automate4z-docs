@@ -1,0 +1,183 @@
+---
+sidebar_position: 38
+title: zos-db2
+---
+
+# `zos-db2` — SQL contre Db2 for z/OS
+
+Exécute du SQL (requêtes, DML, DDL) contre un sous-système **Db2 for z/OS**, présenté comme **synchrone** : le step soumet, attend, parse et échoue sur le premier SQLCODE négatif. Sous le capot : un job **DSNTEP4** généré et soumis via z/OSMF — universel (tout site Db2 a DSNTEP4), zéro dépendance, **aucun client Db2 à installer** sur le poste.
+
+```yaml
+- uses: zos-db2
+  with:
+    subsystem: prod
+    sql: SELECT COUNT(*) AS NB FROM PROD.T_CLIENT
+```
+
+## La tâche en 60 secondes
+
+- **Pas de verbe `action:`** — un seul geste : exécuter du SQL. SELECT → `rows`, DML → `affectedRows`, DDL → `sqlcode`.
+- **La configuration site vit dans le profil** (bloc `db2:`) : sous-système, bibliothèques, plan. **Aucun credential dédié** : le job tourne sous l'identité RACF de la session z/OSMF du run.
+- **Le JCL est un template surchargeable** : un défaut embarqué fonctionne sur une installation standard ; chaque site peut fournir le sien (job card, STEPLIB, exits) — avec un contrat vérifié au lint.
+- **Rien n'est silencieux** : UPDATE qui ne matche rien (`expectAffectedRows`), SELECT vide (`failOnEmpty`), résultat tronqué (`truncated` + log), paramètre en trop ou manquant — tout échoue ou se signale bruyamment.
+- **Latence assumée** : chaque step = un job batch (quelques secondes). Parfait pour des workflows, pas pour de l'interactif.
+
+## Le bloc `db2:` du profil
+
+```yaml
+db2:
+  subsystems:
+    - name: prod           # référencé par le step (subsystem: prod)
+      ssid: DB2P           # SSID du sous-système
+      lpar: prod01         # profil LPAR z/OSMF porteur
+      loadLib: DSNC10.SDSNLOAD
+      runLib: DSNC10.RUNLIB.LOAD   # où vit DSNTEP4
+      plan: DSNTEP12       # plan bindé de DSNTEP4
+      jobCard: |           # optionnel : job card du site
+        //A4ZDB2 JOB (ACCT),'A4Z',CLASS=A,MSGCLASS=X
+      jclTemplate: ./templates/db2.jcl.tmpl   # optionnel : JCL du site
+```
+
+### Le template de JCL
+
+Le JCL DSNTEP4 varie d'un site à l'autre (job card imposée, concaténations STEPLIB, exits, conventions). Le JCL est donc un **template** :
+
+- **Défaut embarqué** (IKJEFT01 → `DSN SYSTEM(...)` → `RUN PROGRAM(DSNTEP4)`) : zéro configuration sur une installation standard.
+- **Surcharge par sous-système** : `jclTemplate:` (fichier, relatif au répertoire des profils) ou `jclTemplateInline:`. Dialecte `text/template` Go, délimiteurs `<< >>` (le même que `vars` de `zos-jobs`).
+- **Contexte** : `<< .JobCard >>`, `<< .JobName >>`, `<< .SSID >>`, `<< .Plan >>`, `<< .LoadLib >>`, `<< .RunLib >>`, `<< .SQL >>`.
+- **Contrat vérifié, jamais deviné** : un template qui ne référence pas `<< .SQL >>` est refusé au chargement du profil **et au lint** (`A4Z-DB2-001`) — le job soumis n'exécuterait pas le SQL du step. Avec le template par défaut, `loadLib`/`runLib`/`plan` sont requis ; une surcharge lève cette exigence.
+
+## Inputs
+
+| Champ | Type | Requis | Défaut | Description |
+|-------|------|--------|--------|-------------|
+| `subsystem` | string | oui | — | Nom du sous-système dans le profil. |
+| `sql` | string | l'un des deux | — | SQL inline — un ou plusieurs statements séparés par `;` (hors littéraux). |
+| `sqlFile` | string | l'un des deux | — | Fichier SQL local. Exclusif avec `sql` (vérifié au lint et à l'exécution). |
+| `parameters` | object | non | — | Valeurs des marqueurs `:name`, substituées côté client : chaînes quotées (apostrophes doublées), nombres/booléens en littéraux, `null` → `NULL`. Marqueur sans valeur **et** valeur sans marqueur = erreurs. Jamais d'identifiants. |
+| `expectAffectedRows` | integer / string | non | — | Garde DML : nombre exact (`1`) ou range (`">=1"`, `"==2"`, `"<5"`). |
+| `failOnEmpty` | boolean | non | `false` | Un SELECT vide fait échouer le step (gate référentiel). |
+| `fetchLimit` | integer | non | `1000` | Plafond de lignes d'un SELECT (réécriture `FETCH FIRST n+1` — la ligne en trop détecte la troncature). Jamais appliqué au DML, aux scripts multi-statements, ni si le SQL porte déjà un `FETCH FIRST`. |
+| `fetchAll` | boolean | non | `false` | Lève le plafond (attention mémoire). |
+| `format` | string | non | `array` | `array` (rows = array d'objets) ou `csv` (rows = string CSV). |
+| `profile` | string | non | `default` | Profil portant le bloc `db2:`. |
+| `timeout` / `pollInterval` | duration | non | `30m` / `5s` | Bornes du polling du job porteur. |
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `rows` | array ou string | SELECT : lignes selon `format`. Valeurs **en chaînes** — le listing ne porte pas les types. |
+| `columns` | array | SELECT : noms de colonnes. |
+| `rowCount` | integer | SELECT : lignes retournées (après troncature éventuelle). |
+| `truncated` | boolean | `true` si `fetchLimit` a tronqué — signalé aussi par un log. |
+| `sqlcode` | integer | SQLCODE du dernier statement (0 = succès, positif = warning). |
+| `sqlcodes` | array | SQLCODE de chaque statement, dans l'ordre. |
+| `affectedRows` | integer / null | Lignes affectées par le dernier DML. |
+| `jobId` | string | Job DSNTEP4 porteur — l'audit passe par `zos-jobs` (`action: jcl`, spool). |
+
+## Erreurs typées
+
+`ErrSubsystemUnknown`, `ErrJclTemplateInvalid` (lint `A4Z-DB2-001`), `ErrSqlFailed` (SQLCODE négatif — le message nomme le statement et porte l'extrait DSNT408I), `ErrParameterMissing`/`ErrParameterUnused`, `ErrAffectedRowsMismatch`, `ErrEmptyResult`. Les échecs du job porteur (abend, timeout) remontent wrappés — le `jobId` survit dans les outputs.
+
+## Recettes de workflows
+
+### 1. Gate référentiel avant un batch
+
+```yaml
+steps:
+  - id: gate-rates
+    uses: zos-db2
+    with:
+      subsystem: prod
+      sql: >-
+        SELECT CURRENCY, RATE FROM PROD.T_EXCHANGE_RATE
+        WHERE RATE_DATE = CURRENT_DATE
+      failOnEmpty: true        # pas de taux du jour = on ne lance pas le batch
+
+  - needs: [gate-rates]
+    uses: zos-jobs
+    with: { action: submit, jcl: "//PROD.JCL(NIGHTLY)", expectRC: 4 }
+```
+
+### 2. Contrôle des rejets après un batch
+
+```yaml
+steps:
+  - id: rejects
+    uses: zos-db2
+    with:
+      subsystem: prod
+      sql: SELECT COUNT(*) AS NB FROM PROD.T_REJECT WHERE RUN_DATE = CURRENT_DATE
+
+  - uses: assert
+    with:
+      condition: ${{ int(steps.rejects.outputs.rows[0].NB) <= 100 }}
+      message: "Trop de rejets — enquêter avant de continuer"
+```
+
+### 3. DML paramétré et gardé — le flag de configuration
+
+```yaml
+steps:
+  - uses: zos-db2
+    with:
+      subsystem: prod
+      sql: UPDATE PROD.T_CONFIG SET VALUE = :value WHERE KEY = :key
+      parameters:
+        value: batch-done
+        key: nightly-status
+      expectAffectedRows: 1    # une typo de clé toucherait 0 ligne → échec bruyant
+```
+
+### 4. Requête depuis un fichier, export CSV
+
+```yaml
+steps:
+  - id: export
+    uses: zos-db2
+    with:
+      subsystem: prod
+      sqlFile: ./sql/audit-du-jour.sql
+      format: csv
+      fetchAll: true
+
+  - uses: fs
+    with:
+      action: write
+      path: ./out/audit.csv
+      content: ${{ steps.export.outputs.rows }}
+```
+
+### 5. Script DDL + peuplement (multi-statements)
+
+```yaml
+steps:
+  - uses: zos-db2
+    with:
+      subsystem: dev
+      sql: |
+        CREATE TABLE TEST.T_FLAG (K VARCHAR(20), V VARCHAR(20));
+        INSERT INTO TEST.T_FLAG VALUES ('feature-x', 'on');
+      # arrêt au premier SQLCODE négatif ; sqlcodes[] par statement
+```
+
+L'exemple complet (gate + batch + contrôle + flag) : `examples/db2-referential-gate.a4z.yaml`.
+
+## Erreurs courantes
+
+- **`SQLCODE = -204`** — table introuvable : vérifier le qualifier (`PROD.T_CLIENT` vs `T_CLIENT`).
+- **`ErrParameterUnused`** — le casing des clés `parameters` doit correspondre exactement aux marqueurs `:name`.
+- **DML sans `expectAffectedRows`** — un UPDATE qui ne matche rien réussit avec `affectedRows: 0`. Rarement voulu : ajouter la garde.
+- **`truncated: true` inattendu** — le SELECT dépasse `fetchLimit` (1000 par défaut). `fetchAll: true` pour un export, ou resserrer le `WHERE`.
+- **`ErrJclTemplateInvalid` au lint** — le template du site ne référence pas `<< .SQL >>`.
+
+## FAQ
+
+**Pourquoi un job batch et pas une connexion directe ?** Universel : tout poste qui parle z/OSMF sait exécuter du SQL, sans driver ni DDF. Les Db2 REST services (rarement activés en banque, un service par statement) restent une évolution possible (`via: rest`, v1.x). Contrepartie : quelques secondes de latence par step.
+
+**Les valeurs sont-elles typées ?** Non — le listing DSNTEP4 est du texte, les valeurs sortent en chaînes (`int()` d'expr-lang pour les comparaisons). Limite documentée.
+
+**Transactions ?** Pas de transaction pilotable en v1 : DSNTEP4 committe en fin de job normal. Un échec au statement N peut laisser les N−1 appliqués — concevoir les scripts en conséquence.
+
+**Et les exports massifs ?** Hors périmètre (candidat `UNLOAD`/DSNTIAUL v1.x). `fetchAll` parse tout le listing en mémoire — raisonnable jusqu'à quelques dizaines de milliers de lignes, pas au-delà.

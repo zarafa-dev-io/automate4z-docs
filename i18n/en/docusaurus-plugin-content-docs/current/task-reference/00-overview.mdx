@@ -5,7 +5,7 @@ title: Overview
 
 # Built-in tasks
 
-automate4z ships **38 built-in tasks** in the `a4z` binary. They compose freely within a single workflow — that is the product's philosophy: each task does one thing, and the rich scenarios (testing a batch, impact-driven builds) are documented **compositions**, not black boxes.
+automate4z ships **39 built-in tasks** in the `a4z` binary. They compose freely within a single workflow — that is the product's philosophy: each task does one thing, and the rich scenarios (testing a batch, impact-driven builds) are documented **compositions**, not black boxes.
 
 ## Catalogue
 
@@ -28,12 +28,13 @@ automate4z ships **38 built-in tasks** in the `a4z` binary. They compose freely 
 | [`template`](template) | Go template + Sprig rendering |
 | [`convert`](convert) | Convert between formats (JSON, YAML, CSV) |
 
-### z/OS tasks (3)
+### z/OS tasks (4)
 
 | Task | Domain |
 |------|--------|
 | [`zos-jobs`](zos-jobs) | JCL submission via z/OSMF, monitoring, SYSOUT retrieval |
 | [`zos-datasets`](zos-datasets) | Operations on PDS, sequential datasets, USS |
+| [`zos-db2`](zos-db2) | SQL against Db2 for z/OS (DSNTEP4 job under the hood, synchronous) |
 | [`z-deps`](z-deps) | Dependency resolution for COBOL/copybooks |
 
 ### Transfers and interop (5)
@@ -105,7 +106,7 @@ The `finally:` block and the evidence task — see the [Collecting execution evi
 | [`evidence-collect`](evidence-collect) | Ed25519-signed audit package, verifiable offline (`a4z evidence verify`) |
 
 :::note
-The `zos-db2` and `zos-endevor` tasks, initially planned, are **deferred**: they cannot be validated without access to an enterprise LPAR with the appropriate licensed products. In the meantime, DB2 access is possible via a batch job (`zos-jobs`) or `shell`.
+The [`zos-db2`](zos-db2) task has **shipped** (DB2 lot — batch DSNTEP4 mode, no client to install); validating it on a fully equipped enterprise LPAR remains a lot follow-up. `zos-endevor` stays **deferred**.
 :::
 
 ---
