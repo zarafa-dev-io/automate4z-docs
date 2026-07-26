@@ -42,10 +42,12 @@ Opérations sur datasets MVS z/OS (séquentiels et partitionnés PDS/PDSE) **et 
 
 | Champ | Type | Requis |
 |-------|------|--------|
-| `dataset` | string | oui — dataset ou membre (`USER.SRC(MEMBER)`) |
-| `localPath` | string | oui — destination locale |
+| `dataset` | string | oui — dataset ou membre (`USER.SRC(MEMBER)`) ; avec `memberPattern`, nom du PDS sans membre |
+| `localPath` | string | oui — destination locale ; avec `memberPattern`, répertoire cible (créé si absent) |
 | `encoding` | string | non |
 | `binary` | boolean | non |
+| `memberPattern` | string | non — download de masse : chaque membre du PDS correspondant au pattern ISPF (`*` = tous, `PAY*`, …) est écrit dans `localPath`, un fichier par membre (réciproque de l'upload répertoire→PDS) |
+| `extension` | string | non — avec `memberPattern`, extension ajoutée aux fichiers produits (`cbl` → `PAYROLL.cbl`) |
 
 ### `create`
 
@@ -69,7 +71,7 @@ Opérations sur datasets MVS z/OS (séquentiels et partitionnés PDS/PDSE) **et 
 
 | Champ | Type | Requis |
 |-------|------|--------|
-| `pattern` | string | l'un des deux — pattern ISPF (`USER.MYAPP.*`) |
+| `pattern` | string | l'un des deux — sans `membersOf` : pattern ISPF de datasets (`USER.MYAPP.*`) ; avec `membersOf` : filtre optionnel sur les noms de membres (`PAY*`), appliqué côté z/OSMF |
 | `membersOf` | string | l'un des deux — lister les membres de ce PDS |
 | `metadata` | boolean | non — avec `pattern`, ajoute les attributs étendus du catalogue à chaque dataset : `cdate` (création), `rdate` (dernière référence), `edate` (expiration, vide si aucune), `dsntp`, `used` (%), `extents`, `size` (tracks), `spaceUnits`. Défaut `false` (plus coûteux sur un gros catalogue). Les datasets migrés retournent ces champs vides, sans rappel HSM. |
 
@@ -132,7 +134,7 @@ Opérations sur datasets MVS z/OS (séquentiels et partitionnés PDS/PDSE) **et 
 |--------|---------|
 | `upload` MVS | `bytesTransferred`, `membersWritten` |
 | `upload` USS | `bytesTransferred` |
-| `download` | `bytesTransferred`, `localPath` |
+| `download` | `bytesTransferred`, `localPath` ; avec `memberPattern` s'y ajoute `membersDownloaded` |
 | `create` | `created` (bool) |
 | `delete` | `deleted` (bool) |
 | `list` MVS | `datasets` ou `members` (array), `count`. Avec `metadata: true`, chaque dataset porte en plus `cdate`, `rdate`, `edate`, `dsntp`, `used`, `extents`, `size`, `spaceUnits`. MVS ne conservant pas de date de modification au niveau dataset, `rdate` (dernière *référence*) est le signal le plus proche ; la vraie date de modification n'existe que pour les membres PDS (`membersOf` → `modDate`). |
@@ -176,6 +178,20 @@ Opérations sur datasets MVS z/OS (séquentiels et partitionnés PDS/PDSE) **et 
     dataset: USER.MYAPP.SRC(CUSTOMER)
     localPath: ./review/CUSTOMER.cbl
 ```
+
+**Download de tous les membres d'un PDS vers un répertoire**
+
+```yaml
+- uses: zos-datasets
+  with:
+    action: download
+    dataset: USER.MYAPP.SRC
+    memberPattern: "*"       # tous les membres ; ou PAY* pour un sous-ensemble
+    localPath: ./src/cobol
+    extension: cbl           # PAYROLL → ./src/cobol/PAYROLL.cbl
+```
+
+Les membres sont écrits en ordre alphabétique. En cas d'échec en cours de route, le fichier partiel est supprimé mais les membres déjà téléchargés restent sur disque ; un pattern sans correspondance réussit avec `membersDownloaded: 0`.
 
 **Allocation conditionnelle d'un PDS**
 
