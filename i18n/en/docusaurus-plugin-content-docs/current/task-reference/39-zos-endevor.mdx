@@ -1,0 +1,221 @@
+---
+sidebar_position: 39
+title: zos-endevor
+---
+
+# `zos-endevor` — Endevor SCM: elements and packages
+
+Drives **Endevor** (Broadcom's mainframe SCM, dominant in banking) through the Endevor Web Services **RESTful API v2**: inventory, element lifecycle (retrieve, add/update, generate, move, transfer, signin) and the **package lifecycle** (create, cast, approve, execute, backout). Pure HTTP/JSON, **no client to install**.
+
+```yaml
+- uses: zos-endevor
+  with:
+    action: generate
+    instance: prod
+    environment: DEV
+    stage: "1"
+    system: FINANCE
+    subsystem: CLIENTS
+    type: COBOL
+    element: COBPRG01
+    ccid: CHG04212
+```
+
+## The task in 60 seconds
+
+- **Fourteen actions**: elements (`list`, `retrieve`, `signin`, `add`, `update`, `generate`, `move`, `transfer`) and packages (`package-create`/`cast`/`approve`/`execute`/`backout`/`list`).
+- **Instances live in the profile** (`endevor:`): base_url, configuration, RACF credentials — **`${secret:}` mandatory**, an inline password is refused at lint (`A4Z-END-001`).
+- **The Endevor envelope is typed**: every action exposes `returnCode`/`reasonCode`/`messages`; the step fails when `returnCode > acceptRC` (default 4 — warnings pass) with the **Endevor messages reproduced**, never a bare code.
+- **Nothing is forced silently**: reading does not reserve (`signout: false` by default), and taking over a colleague's signout is an explicit gesture (`overrideSignout`) — "signed out to another user" is a typed error that **names the holder**.
+- **Optimistic locking**: `retrieve` exposes a `fingerprint` the `update` can present — Endevor refuses the update when the element moved in between.
+
+## The profile's `endevor:` block
+
+```yaml
+endevor:
+  instances:
+    - name: prod
+      base_url: https://endevor.bank.example:8080
+      configuration: ENDEVOR          # server-side configuration name
+      auth:
+        user: SVCCICD
+        password: ${secret:ENDEVOR_PWD}
+      tls:
+        caFile: ./corp-ca.pem         # internal CA, common on-prem
+```
+
+TLS: same keys as `http`/`jira` (`caFile`, client pair, **loud** `insecureSkipVerify`), TLS 1.2 floor.
+
+## Inputs
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `action` | string | yes | — | See the list above. |
+| `instance` | string | yes | — | Instance name from the profile. |
+| `environment` / `stage` / `system` / `subsystem` / `type` / `element` | string | per action | `*` | Inventory location (wildcards on `list`). `stage` = number. |
+| `ccid` / `comment` | string | per site | — | Change Control ID (max 12) and comment (max 40) — pass-through: when the site config requires them, the typed Endevor error bubbles up. |
+| `acceptRC` | integer | no | `4` | Maximum accepted RC. |
+| `profile` | string | no | `default` | Profile carrying the `endevor:` block. |
+
+**`retrieve`**: `localPath` (required), `signout` (default `false`), `overrideSignout`, `search` (up the map), `version`/`level`. Outputs: `localPath`, `bytesWritten`, **`fingerprint`**.
+**`add` / `update`**: `localPath` (required — content pushed as multipart), `procGroup`, `overrideSignout`; `update` + `fingerprint` = optimistic locking. Outputs: `bytesSent` + envelope.
+**`generate`**: `procGroup`, `copyBack`. A **processor** failure surfaces as RC ≥ 8 → `ErrEndevorFailed` with messages (`C1G0129E`…).
+**`move`**: `withHistory`, `synchronize`. **`transfer`**: `targetEnvironment`/`targetStage`/`targetSystem`/`targetSubsystem`/`targetType` (default = source), `withHistory`.
+**Packages**: `package` (required); `package-create` takes the SCL via `scl` **or** `sclFile` (+ `description`, `sharable`, `backout`); `package-approve` accepts `notes` (max 8 lines); `package-list` filters by `status`.
+
+## Outputs
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `returnCode` / `reasonCode` | integer | Endevor envelope, on every action. |
+| `messages` | array | Endevor messages from the response. |
+| `elements` / `count` | array / int | `list`: entries `{environment, stage, system, subsystem, type, element, vvll, lastAction, procGroup}`. |
+| `localPath` / `bytesWritten` / `fingerprint` / `signedOut` | — | `retrieve`. |
+| `bytesSent` | integer | `add`/`update`. |
+| `package` / `packages` | string / array | Package actions. |
+| `success` | boolean | Write actions. |
+
+## Typed errors
+
+`ErrInstanceUnknown`, `ErrEndevorFailed` (RC > `acceptRC`, messages reproduced), **`ErrSignedOut`** (holder named), `APIError` (HTTP status + messages).
+
+## Workflow recipes
+
+### 1. The CI loop: retrieve → edit → guarded update → generate
+
+```yaml
+steps:
+  - id: checkout
+    uses: zos-endevor
+    with:
+      action: retrieve
+      instance: prod
+      environment: DEV
+      stage: "1"
+      system: FINANCE
+      subsystem: CLIENTS
+      type: COBOL
+      element: COBPRG01
+      localPath: ./work/COBPRG01.cbl
+
+  # ... local transformation ...
+
+  - id: push
+    uses: zos-endevor
+    with:
+      action: update
+      instance: prod
+      environment: DEV
+      stage: "1"
+      system: FINANCE
+      subsystem: CLIENTS
+      type: COBOL
+      element: COBPRG01
+      localPath: ./work/COBPRG01.cbl
+      fingerprint: ${{ steps.checkout.outputs.fingerprint }}   # refused if the element moved
+      ccid: ${{ inputs.changeId }}
+
+  - uses: zos-endevor
+    with:
+      action: generate
+      instance: prod
+      environment: DEV
+      stage: "1"
+      system: FINANCE
+      subsystem: CLIENTS
+      type: COBOL
+      element: COBPRG01
+      ccid: ${{ inputs.changeId }}
+      acceptRC: 4
+```
+
+### 2. Governed CD: package → cast → approve → execute
+
+```yaml
+steps:
+  - uses: zos-endevor
+    with:
+      action: package-create
+      instance: prod
+      package: CHG04212PK
+      description: Nightly promotion
+      backout: true
+      scl: |
+        MOVE ELEMENT 'COBPRG01'
+          FROM ENVIRONMENT 'DEV' SYSTEM 'FINANCE' SUBSYSTEM 'CLIENTS'
+               TYPE 'COBOL' STAGE NUMBER 1
+          OPTIONS CCID 'CHG04212' .
+
+  - uses: zos-endevor
+    with: { action: package-cast, instance: prod, package: CHG04212PK }
+
+  - uses: zos-endevor
+    with:
+      action: package-approve
+      instance: prod
+      package: CHG04212PK
+      notes: ["approved by pipeline"]
+
+  - uses: zos-endevor
+    with: { action: package-execute, instance: prod, package: CHG04212PK }
+```
+
+### 3. Inventory: which elements live under a type?
+
+```yaml
+steps:
+  - id: inv
+    uses: zos-endevor
+    with:
+      action: list
+      instance: prod
+      environment: DEV
+      system: FINANCE
+      type: COBOL
+      # element: * (default) — every element of the type
+
+  - run: echo "${{ steps.inv.outputs.count }} COBOL elements in DEV"
+```
+
+### 4. Simple promotion along the map
+
+```yaml
+steps:
+  - uses: zos-endevor
+    with:
+      action: move
+      instance: prod
+      environment: DEV
+      stage: "1"
+      system: FINANCE
+      subsystem: CLIENTS
+      type: COBOL
+      element: COBPRG01
+      withHistory: true
+      ccid: ${{ inputs.changeId }}
+```
+
+### 5. Backing out an executed package
+
+```yaml
+steps:
+  - uses: zos-endevor
+    with: { action: package-backout, instance: prod, package: CHG04212PK }
+```
+
+The full example (CI loop + package cycle): `examples/endevor-ci-loop.a4z.yaml`.
+
+## Common mistakes
+
+- **`ErrSignedOut`** — someone is working on the element. `overrideSignout: true` is possible but risky: coordinate instead.
+- **`CCID required`** — the site config mandates a CCID. Add `ccid:` (max 12 characters).
+- **Generate at RC 8** — the processor (Endevor-generated JCL) failed; the `C1Gxxxx` messages in the error point at the cause, detailed logs stay on the Endevor side.
+- **Cast failing** — component validation or missing approvers: the `PKGxxxx` messages are reproduced in the error.
+
+## FAQ
+
+**What if my site has no Endevor Web Services?** A **batch SCL mode** is framed (lot decision E9): same actions, same YAML, executed as an NDVRC1/C1BM3000 job with generated SCL — the `zos-db2` machinery (carrying job + site JCL template + listing parser). It lands with the lot's CP6–CP7.
+
+**Why `acceptRC: 4` by default?** Endevor warnings (RC 4) are the norm on real code — the same choice as `expectRC: 4` on `zos-jobs`. Use `acceptRC: 0` for strict chains.
+
+**Is the task validated on a real Endevor?** It is contractualized on the official v2 API documentation and a faithful mock; validation on a licensed instance is the **lot follow-up** (same assumed status as `zos-db2`).
