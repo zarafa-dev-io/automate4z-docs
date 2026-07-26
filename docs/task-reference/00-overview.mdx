@@ -5,7 +5,7 @@ title: Vue d'ensemble
 
 # Tâches built-in
 
-automate4z embarque **39 tâches built-in** dans le binaire `a4z`. Elles se composent librement dans un même workflow — c'est même la philosophie du produit : chaque tâche fait une chose, et les scénarios riches (tester un batch, builder à l'impact) sont des **compositions** documentées, pas des boîtes noires.
+automate4z embarque **40 tâches built-in** dans le binaire `a4z`. Elles se composent librement dans un même workflow — c'est même la philosophie du produit : chaque tâche fait une chose, et les scénarios riches (tester un batch, builder à l'impact) sont des **compositions** documentées, pas des boîtes noires.
 
 ## Catalogue
 
@@ -28,13 +28,14 @@ automate4z embarque **39 tâches built-in** dans le binaire `a4z`. Elles se comp
 | [`template`](template) | Rendu Go template + Sprig |
 | [`convert`](convert) | Conversion entre formats (JSON, YAML, CSV) |
 
-### Tâches z/OS (4)
+### Tâches z/OS (5)
 
 | Tâche | Domaine |
 |-------|---------|
 | [`zos-jobs`](zos-jobs) | Soumission JCL via z/OSMF, monitoring, SYSOUT |
 | [`zos-datasets`](zos-datasets) | Opérations sur PDS, séquentiels, USS |
 | [`zos-db2`](zos-db2) | SQL contre Db2 for z/OS (job DSNTEP4 sous le capot, synchrone) |
+| [`zos-endevor`](zos-endevor) | SCM Endevor : cycle éléments et packages (Web Services REST v2) |
 | [`z-deps`](z-deps) | Résolution de dépendances pour COBOL/copybooks |
 
 ### Transferts et interop (5)
@@ -106,7 +107,7 @@ Le bloc `finally:` et la tâche de collecte de preuves — voir le guide [Collec
 | [`evidence-collect`](evidence-collect) | Paquet d'audit signé Ed25519, vérifiable hors ligne (`a4z evidence verify`) |
 
 :::note
-La tâche [`zos-db2`](zos-db2) est désormais **livrée** (lot DB2 — mode batch DSNTEP4, aucun client à installer) ; sa validation sur une LPAR d'entreprise équipée reste un suivi du lot. `zos-endevor` reste **différée**.
+Les tâches [`zos-db2`](zos-db2) et [`zos-endevor`](zos-endevor), initialement différées, sont désormais **livrées** — il n'y a plus de tâche « bientôt ». Leur validation sur un environnement d'entreprise équipé (Db2, Endevor sous licence) reste le suivi de leurs lots respectifs : les deux sont contractualisées sur la documentation officielle des API et des mocks fidèles.
 :::
 
 ---

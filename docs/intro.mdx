@@ -25,7 +25,7 @@ automate4z résout ça avec un seul fichier YAML, un seul binaire, et une interf
 
 | Fonctionnalité | Description |
 |----------------|-------------|
-| **39 tâches built-in** | Shell, HTTP, filesystem, archives, notifications, requêtes JSON/YAML, templates, jobs et datasets z/OS — [le catalogue complet](task-reference/overview) |
+| **40 tâches built-in** | Shell, HTTP, filesystem, archives, notifications, requêtes JSON/YAML, templates, jobs et datasets z/OS — [le catalogue complet](task-reference/overview) |
 | **Données mainframe** | Copybooks → schémas, jeux d'essai générés/anonymisés, lecture champ par champ, diff de datasets sur valeurs décodées |
 | **Tests batch** | Le [bloc `tests:`](workflow-spec/gates-et-tests) : spool analysé, assertions, rapport JUnit lisible par Jenkins/GitLab |
 | **Build incrémental** | `source-scan` → `build-impact` → `zos-build` : le pipeline façon DBB, [sans rien installer sur la LPAR](guides/build-and-test) |
@@ -70,7 +70,7 @@ a4z run hello.yml --input name=Alice
 | [Guide de démarrage](getting-started) | Installation, premier workflow, commandes, exemples |
 | [Référence CLI](cli-reference) | `a4z run`, `lint`, `plan`, `serve`, `runs`, `secrets`, `plugins`… et tous leurs flags |
 | [Spécification Workflow](workflow-spec/structure) | Format YAML complet : inputs, steps, expressions, [gates et tests](workflow-spec/gates-et-tests) |
-| [Référence des tâches](task-reference/overview) | Documentation détaillée des 39 tâches built-in |
+| [Référence des tâches](task-reference/overview) | Documentation détaillée des 40 tâches built-in |
 | [Guides](guides/build-and-test) | Scénarios de bout en bout : construire et tester, tester un batch |
 | [Interface web (Studio)](studio/overview) | Éditer, exécuter et suivre les workflows dans le navigateur |
 | [Plugins externes](plugins/utiliser-des-plugins) | Étendre a4z avec vos propres tâches, dans n'importe quel langage |
@@ -80,7 +80,7 @@ a4z run hello.yml --input name=Alice
 
 ## Statut du projet
 
-**Version courante : v{release.version}** ({release.date}) — 39 tâches built-in stables. Les tâches z/OS (`zos-jobs`, `zos-datasets`, `z-deps`) sont validées contre z/Xplore ; les lots récents couvrent les données mainframe (copybooks, jeux d'essai, inspection, comparaison), les tests batch (bloc `tests:` + JUnit), le build incrémental (`source-scan` / `build-impact` / `zos-build`), le Studio web, le mode App et les plugins externes.
+**Version courante : v{release.version}** ({release.date}) — 40 tâches built-in stables. Les tâches z/OS (`zos-jobs`, `zos-datasets`, `z-deps`) sont validées contre z/Xplore ; les lots récents couvrent les données mainframe (copybooks, jeux d'essai, inspection, comparaison), les tests batch (bloc `tests:` + JUnit), le build incrémental (`source-scan` / `build-impact` / `zos-build`), le Studio web, le mode App et les plugins externes.
 
 Le détail de chaque version est sur la page [Notes de version](changelog) — mise à jour automatiquement à chaque release.
 
