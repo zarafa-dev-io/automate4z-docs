@@ -47,6 +47,27 @@ Le JCL DSNTEP4 varie d'un site à l'autre (job card imposée, concaténations ST
 - **Contexte** : `<< .JobCard >>`, `<< .JobName >>`, `<< .SSID >>`, `<< .Plan >>`, `<< .LoadLib >>`, `<< .RunLib >>`, `<< .SQL >>`.
 - **Contrat vérifié, jamais deviné** : un template qui ne référence pas `<< .SQL >>` est refusé au chargement du profil **et au lint** (`A4Z-DB2-001`) — le job soumis n'exécuterait pas le SQL du step. Avec le template par défaut, `loadLib`/`runLib`/`plan` sont requis ; une surcharge lève cette exigence.
 
+**Le template par défaut, comme point de départ.** C'est le JCL embarqué — copiez-le dans `./templates/db2.jcl.tmpl` (à côté du profil) et adaptez ce qui diffère chez vous (job card d'exploitation, STEPLIB exactes, DSNTEP2 sous un autre plan, DD d'exit maison) en **gardant `<< .SQL >>`** :
+
+```text
+<< .JobCard >>
+//TEP4     EXEC PGM=IKJEFT01,DYNAMNBR=20
+//STEPLIB  DD DISP=SHR,DSN=<< .LoadLib >>
+//         DD DISP=SHR,DSN=<< .RunLib >>
+//SYSTSPRT DD SYSOUT=*
+//SYSPRINT DD SYSOUT=*
+//SYSUDUMP DD SYSOUT=*
+//SYSTSIN  DD *
+ DSN SYSTEM(<< .SSID >>)
+ RUN PROGRAM(DSNTEP4) PLAN(<< .Plan >>) -
+     LIB('<< .RunLib >>')
+ END
+/*
+//SYSIN    DD *
+<< .SQL >>
+/*
+```
+
 ## Inputs
 
 | Champ | Type | Requis | Défaut | Description |

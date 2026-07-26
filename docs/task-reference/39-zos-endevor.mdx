@@ -5,7 +5,7 @@ title: zos-endevor
 
 # `zos-endevor` — SCM Endevor : éléments et packages
 
-Pilote **Endevor** (le SCM mainframe Broadcom, dominant en banque) via l'API **RESTful v2** d'Endevor Web Services : inventaire, cycle de vie des éléments (retrieve, add/update, generate, move, transfer, signin) et **cycle des packages** (create, cast, approve, execute, backout). HTTP/JSON pur, **aucun client à installer**.
+Pilote **Endevor** (le SCM mainframe Broadcom, dominant en banque) via l'API **RESTful v2** d'Endevor Web Services — ou en **batch SCL** (`via: batch`) pour les sites qui n'exposent pas Web Services : inventaire, cycle de vie des éléments (retrieve, add/update, generate, move, transfer, signin) et **cycle des packages** (create, cast, approve, execute, backout). HTTP/JSON pur, **aucun client à installer**.
 
 ```yaml
 - uses: zos-endevor
@@ -46,6 +46,41 @@ endevor:
 
 TLS : mêmes clés que `http`/`jira` (`caFile`, paire cliente, `insecureSkipVerify` **bruyant**), TLS 1.2 minimum.
 
+## Mode batch SCL (`via: batch`) — sans Web Services
+
+Beaucoup de sites n'activent pas Endevor Web Services. Une instance déclarée **`via: batch`** exécute les **mêmes actions avec le même YAML** : la tâche génère le SCL, le soumet dans un job **NDVRC1/C1BM3000** via la session z/OSMF du run, et parse `C1MSGS1` pour reconstruire la même enveloppe typée (`returnCode`, `messages`, gate `acceptRC`, `ErrSignedOut` avec détenteur nommé). Le mode est **explicite par instance — jamais deviné**.
+
+```yaml
+endevor:
+  instances:
+    - name: prod-batch
+      via: batch                         # explicite, jamais deviné
+      lpar: prod                         # profil LPAR z/OSMF porteur
+      loadLib: NDVR.CSIQLOAD             # STEPLIB Endevor
+      conlib: NDVR.CONLIB                # optionnel
+      jobCard: "//NDVRCI JOB (ACCT),'CI',CLASS=A,MSGCLASS=X"
+      stagingDataset: A4Z.NDVR.STAGING   # PDS d'échange — requis pour retrieve/add/update/package-create
+```
+
+- **Toutes les actions sauf `list`/`package-list`** (le format rapport du SCL est trop pauvre pour tenir la promesse des outputs REST — refus explicite, jamais un résultat dégradé).
+- **Le contenu transite par le `stagingDataset`** : `retrieve` = SCL vers le staging puis download ; `add`/`update` = upload puis SCL `FROM DSNAME`. Même session z/OSMF pour tout.
+- **Limites bruyantes** : pas de `fingerprint` (un `update` batch avec `fingerprint:` échoue explicitement), pas de `search` au `retrieve`, latence d'un job par action. **Le REST reste recommandé quand Web Services existe.**
+- Inputs batch : `timeout` (défaut `30m`), `pollInterval` (défaut `5s`) ; output `jobId`.
+
+**Le JCL par défaut, à adapter par site.** Copiez-le dans un fichier à côté du profil (`jclTemplate: ./templates/endevor.jcl.tmpl`, ou `jclTemplateInline:`) et adaptez job card, bibliothèques et DD d'exit — en **gardant `<< .SCL >>`** : un template qui ne le référence pas est refusé au lint (**`A4Z-END-002`**), car le job soumis n'exécuterait pas le SCL du step.
+
+```text
+<< .JobCard >>
+//ENDEVOR  EXEC PGM=NDVRC1,PARM='C1BM3000',REGION=0M
+//STEPLIB  DD DISP=SHR,DSN=<< .LoadLib >>
+<< if .ConLib >>//CONLIB   DD DISP=SHR,DSN=<< .ConLib >>
+<< end >>//C1MSGS1  DD SYSOUT=*
+//C1MSGS2  DD SYSOUT=*
+//BSTIPT01 DD *
+<< .SCL >>
+/*
+```
+
 ## Inputs
 
 | Champ | Type | Requis | Défaut | Description |
@@ -77,7 +112,7 @@ TLS : mêmes clés que `http`/`jira` (`caFile`, paire cliente, `insecureSkipVeri
 
 ## Erreurs typées
 
-`ErrInstanceUnknown`, `ErrEndevorFailed` (RC > `acceptRC`, messages reproduits), **`ErrSignedOut`** (détenteur nommé), `APIError` (statut HTTP + messages), `ErrJclTemplateInvalid` à venir avec le mode batch.
+`ErrInstanceUnknown`, `ErrEndevorFailed` (RC > `acceptRC`, messages reproduits), **`ErrSignedOut`** (détenteur nommé — REST et batch), `APIError` (statut HTTP + messages), `ErrJclTemplateInvalid` (template batch sans `<< .SCL >>` ou illisible).
 
 ## Recettes de workflows
 
@@ -214,8 +249,8 @@ L'exemple complet (boucle CI + cycle de package) : `examples/endevor-ci-loop.a4z
 
 ## FAQ
 
-**Et si mon site n'a pas Endevor Web Services ?** Un **mode batch SCL** est cadré (décision E9 du lot) : mêmes actions, même YAML, exécution par job NDVRC1/C1BM3000 avec SCL généré — la mécanique `zos-db2` (job porteur + template JCL de site + parseur de listing). Il arrive aux CP6–CP7 du lot.
+**Et si mon site n'a pas Endevor Web Services ?** C'est exactement le cas du **mode batch SCL** : déclarez l'instance `via: batch` (voir la section dédiée) — mêmes actions, même YAML, exécution par job NDVRC1/C1BM3000 avec SCL généré, la mécanique `zos-db2` (job porteur + template JCL de site + parseur de listing).
 
 **Pourquoi `acceptRC: 4` par défaut ?** Les warnings Endevor (RC 4) sont la norme sur du code réel — même choix que `expectRC: 4` chez `zos-jobs`. `acceptRC: 0` pour les chaînes strictes.
 
-**La tâche est-elle validée sur un vrai Endevor ?** Elle est contractualisée sur la documentation officielle de l'API v2 et un mock fidèle ; la validation sur une instance sous licence est le **suivi du lot** (même statut assumé que `zos-db2`).
+**La tâche est-elle validée sur un vrai Endevor ?** Elle est contractualisée sur la documentation officielle de l'API v2 / du SCL Reference et un mock fidèle ; la validation sur une instance sous licence est le **suivi du lot** (même statut assumé que `zos-db2`).
