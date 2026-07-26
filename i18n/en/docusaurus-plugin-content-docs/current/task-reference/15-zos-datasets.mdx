@@ -5,7 +5,7 @@ title: zos-datasets
 
 # `zos-datasets` — MVS datasets and USS files
 
-Operations on z/OS MVS datasets (sequential and partitioned PDS/PDSE) **and USS files** (Unix System Services): upload, download, create, delete, list, chmod, copy, rename.
+Complete operations on z/OS **MVS datasets** (sequential, PDS, PDSE) and **USS files** (Unix System Services) through the z/OSMF REST API: transfers, allocation, listing, server-side copy and rename, HSM management (migrate/recall), encoding tags, permissions.
 
 ```yaml
 - uses: zos-datasets
@@ -16,98 +16,162 @@ Operations on z/OS MVS datasets (sequential and partitioned PDS/PDSE) **and USS 
     lpar: dev01
 ```
 
+## The task in 60 seconds
+
+- **One task, sixteen actions.** `action:` selects the operation — same model as `fs`, `s3` or `ftp`.
+- **MVS or USS?** If the step carries `ussPath`, the target is a Unix file (absolute path starting with `/`). If it carries `dataset`, the target is an MVS dataset. `mkdir`, `chmod`, `chtag`, `chown` and `move` are USS-only; `migrate`, `recall` and `deleteMigrated` are MVS-only.
+- **The session is managed for you.** The task never authenticates itself: it consumes the z/OSMF session opened **once per run and per LPAR** (the `lpar:` profile). Single-use passwords work. Credentials never appear in the workflow and are never logged.
+- **Transfers stream.** A download writes straight to disk (the dataset is never buffered whole in memory); on a mid-transfer failure the partial file is removed — never a truncated file that looks complete.
+- **Server-side operations move no data through your machine.** `copy`, `rename`, `move`, HSM: everything happens on the LPAR; the client only sends orders.
+- **Nothing is guessed.** Encoding is your statement (`encoding`, `binary`, `chtag`), HSM recall is your choice (`migratedRecall`), and a USS path is recognized by its leading `/` (an MVS dataset name cannot start with `/` — grammar, not heuristics).
+
+## The three classic traps (read before your first workflow)
+
+**1. Encoding.** A mainframe lives in EBCDIC (usually IBM-1047), your machine in UTF-8/ASCII. By default z/OSMF converts text both ways — exactly right for COBOL source or JCL. But for a **load module, tar, zip or any binary**: `binary: true`, or the conversion mangles the file. For a specific encoding (a file already in IBM-1047, UTF-8 to preserve…): `encoding: IBM-1047`.
+
+**2. The USS tag.** On USS every file carries (or should carry) a **tag** declaring its encoding. A file uploaded without a tag will be misread by the mainframe's Unix tools (`cat` shows garbage, shell scripts won't run). After a USS upload, set the tag with `action: chtag` — see the full deployment example below.
+
+**3. HSM migration.** On a real production system, rarely-used datasets get **migrated** (moved to secondary storage by HSM). A `download` of a migrated dataset fails by default. Three answers: `migratedRecall: wait` on the download (recall and wait), an explicit `recall` action early in the workflow, or `migratedRecall: error` to fail cleanly.
+
 ## Common inputs
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `action` | string | yes | `upload`, `download`, `create`, `delete`, `list`, `exists`, `copy`, `rename`, `mkdir`, `chmod`. |
+| `action` | string | yes | `upload`, `download`, `create`, `delete`, `list`, `exists`, `copy`, `rename`, `migrate`, `recall`, `deleteMigrated`, `mkdir`, `chmod`, `chtag`, `chown`, `move`. |
 | `lpar` | string | no | Target LPAR profile (default: active profile). |
-
-**MVS vs USS discrimination:** if `ussPath` is present → USS target. If `dataset` is present → MVS dataset. `mkdir` and `chmod` are USS-only.
 
 ## MVS actions
 
-### `upload`
+### `upload` — local → dataset
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `dataset` | string | yes | Target dataset. For a PDS, each local file becomes a member. |
-| `localPath` | string | yes | Local file or directory. |
-| `encoding` | string | no | Source codepage. Empty = automatic EBCDIC conversion. |
-| `binary` | boolean | no | `true` = binary transfer without conversion. Default `false`. |
+| `dataset` | string | yes | Target dataset. For a PDS without a member, every local file becomes a member. |
+| `localPath` | string | yes | Local file **or directory** (relative to the workflow directory). |
+| `encoding` | string | no | Source codepage. Empty = automatic EBCDIC conversion (right for source code). |
+| `binary` | boolean | no | `true` = binary transfer, no conversion. Default `false`. |
 
-**Member naming**: extension stripped → uppercase → invalid characters removed → truncated to 8 → `A` prefix if first character is a digit.
+**Directory → PDS upload**: every file becomes a member. Member names derive from file names: extension stripped → uppercased → invalid characters removed → truncated to 8 → `A` prefix if it starts with a digit (`customer-record.cbl` → `CUSTOMER`, `01-header.cbl` → `A01HEADE`). Two files mapping to the same member fail the step **before any transfer** (`ErrMemberNameCollision`).
 
-### `download`
+### `download` — dataset → local
 
-| Field | Type | Required |
-|-------|------|----------|
-| `dataset` | string | yes — dataset or member (`USER.SRC(MEMBER)`); with `memberPattern`, a PDS name without a member reference |
-| `localPath` | string | yes — local destination; with `memberPattern`, the target directory (created if missing) |
-| `encoding` | string | no |
-| `binary` | boolean | no |
-| `memberPattern` | string | no — bulk download: every PDS member matching the ISPF pattern (`*` = all, `PAY*`, …) is written into `localPath`, one file per member (the reverse of the directory→PDS upload) |
-| `extension` | string | no — with `memberPattern`, extension appended to each produced file (`cbl` → `PAYROLL.cbl`) |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `dataset` | string | yes | Dataset or member (`USER.SRC(MEMBER)`); with `memberPattern`, a PDS name without member. |
+| `localPath` | string | yes | Local destination; with `memberPattern`, the target directory (created if missing). |
+| `encoding` | string | no | Codepage. |
+| `binary` | boolean | no | Binary transfer. Default `false`. |
+| `memberPattern` | string | no | **Bulk download**: every PDS member matching the ISPF pattern (`*` = all, `PAY*`…) becomes a file in `localPath`. Filtered server-side by z/OSMF. |
+| `extension` | string | no | With `memberPattern`: extension appended to files (`cbl` → `PAYROLL.cbl`). |
+| `migratedRecall` | string | no | If the dataset is **migrated**: `wait` (recall and wait), `nowait` (recall without waiting), `error` (fail). Absent = server default. |
 
-### `create`
+Bulk download writes members in alphabetical (deterministic) order. On a mid-transfer failure the current partial file is removed but already-written members stay; a pattern with no match succeeds with `membersDownloaded: 0`.
+
+### `create` — allocation
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `dataset` | string | yes | — | Dataset name (max 44 chars). |
-| `datasetType` | string | no | `seq` | `seq`, `pds`, or `pdse`. |
+| `dataset` | string | yes | — | Name (max 44 chars, 8-char qualifiers). |
+| `datasetType` | string | no | `seq` | `seq`, `pds`, or `pdse` — `pdse` allocates a **real LIBRARY** (`dsntype: LIBRARY`). |
 | `recfm` | string | no | `FB` | `FB`, `VB`, `F`, `U`, `FBA`, `VBA`. |
 | `lrecl` | integer | no | `80` | Record length. |
-| `primary` | integer | no | `1` | Primary allocation in tracks. |
-| `secondary` | integer | no | `1` | Secondary allocation in tracks. |
-| `dirblk` | integer | no | — | Directory blocks (for PDS). |
+| `blksize` | integer | no | `lrecl × 10` (FB) | Block size. |
+| `primary` / `secondary` | integer | no | `1` / `1` | Allocation in `alcunit`. |
+| `dirblk` | integer | no | `10` | Directory blocks (PDS). |
+| `alcunit` | string | no | `TRK` | `TRK` (tracks) or `CYL` (cylinders). |
+| `volser` | string | no | — | Explicit volume (bypasses SMS placement). |
+| `dataclass` / `storclass` / `mgmtclass` | string | no | — | **SMS** classes. On an SMS-managed site this is often all you need to provide. |
+| `like` | string | no | — | **Model dataset**: unset attributes are inherited from the model, explicit ones win. Task defaults are not sent in that case. |
 
 ### `delete`
 
 | Field | Type | Required |
 |-------|------|----------|
-| `dataset` | string | yes — dataset or `PDS(MEMBER)` |
+| `dataset` | string | yes — whole dataset, or `PDS(MEMBER)` for a single member |
 
-### `list`
+### `list` — catalog and members
 
-| Field | Type | Required |
-|-------|------|----------|
-| `pattern` | string | one of the two — without `membersOf`: ISPF dataset pattern (`USER.MYAPP.*`); with `membersOf`: optional member-name filter (`PAY*`), applied server-side by z/OSMF |
-| `membersOf` | string | one of the two — list members of this PDS |
-| `metadata` | boolean | no — with `pattern`, adds the extended catalog attributes to each dataset: `cdate` (creation), `rdate` (last referenced), `edate` (expiration, empty when none), `dsntp`, `used` (%), `extents`, `size` (tracks), `spaceUnits`. Default `false` (costs more on large catalogs). Migrated datasets return these fields empty, with no HSM recall. |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `pattern` | string | one of the two | Without `membersOf`: ISPF dataset pattern (`USER.MYAPP.*`). With `membersOf`: optional member-name filter (`PAY*`), server-side. |
+| `membersOf` | string | one of the two | List the members of this PDS (with ISPF stats: `version`, `modDate`, `user`). |
+| `metadata` | boolean | no | With `pattern`: adds the extended catalog attributes — `cdate` (creation), `rdate` (last referenced), `edate` (expiration), `dsntp`, `used` (%), `extents`, `size` (tracks), `spaceUnits`. Costs more on large catalogs. **Migrated** datasets return these fields empty, with no HSM recall. |
 
-### `copy` / `rename`
-
-| Field | Type | Required |
-|-------|------|----------|
-| `source` | string | yes |
-| `target` | string | yes |
+:::tip Why no modification date?
+MVS keeps **no modification date** at the dataset level. `rdate` (last *reference*, which also moves on reads) is the closest signal; a true modification date only exists for **PDS members** (`membersOf` → `modDate`, kept by ISPF stats).
+:::
 
 ### `exists`
 
 | Field | Type | Required |
 |-------|------|----------|
-| `dataset` | string | yes — dataset, member (`USER.PDS(MBR)`) |
+| `dataset` | string | yes — dataset or member (`USER.PDS(MBR)`) |
+
+Returns `exists` (bool — a 404 is **not** an error) and `datasetType` (`seq`, `pds`, or `member`). Idiom: guard a `create` behind an `if:` — see the recipes.
+
+### `copy` — server-side copy (datasets **and** USS crossover)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `source` | string | yes | Dataset, member, `PDS(*)` (every member) or USS path (starts with `/`). |
+| `target` | string | yes | Dataset, member or USS path. |
+| `replace` | boolean | no | Overwrite an existing target member. Default `false` — an existing member **fails** the copy. |
+| `binary` | boolean | no | USS → dataset: the source file is binary. |
+
+Three crossings: **dataset → dataset** (including `USER.SRC(*)` → PDS to copy every member), **USS → dataset**, **dataset → USS**. USS → USS is refused (use `move` or the USS actions). Everything is server-side: no data transits the client.
+
+### `rename` — native rename, datasets **and members**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `source` | string | yes | Dataset or member. |
+| `target` | string | yes | Dataset or member (same PDS for a member). |
+
+Uses the **native z/OSMF rename** (z/OS 2.2+): atomic, attributes preserved. Source and target must both be datasets or both be members; a member rename stays within its PDS. An existing target fails the step **without touching the source**.
+
+### `migrate` / `recall` / `deleteMigrated` — HSM
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `dataset` | string | yes | — | Target dataset. |
+| `wait` | boolean | no | `false` (migrate), `true` (recall, deleteMigrated) | Wait for HSM to finish. `recall` waits by default: you recall a dataset to use it in the next step. |
+| `purge` | boolean | no | `false` | `deleteMigrated`: ask HSM not to keep a backup copy. |
+
+`migrate` archives (non-blocking by default), `recall` brings a migrated dataset back to primary storage, `deleteMigrated` deletes **without recalling** — precious for purging archived generations without paying for the recall.
 
 ## USS actions
 
-### `upload` / `download`
+### `upload` / `download` (USS)
 
-| Field | Type | Required |
-|-------|------|----------|
-| `ussPath` | string | yes — absolute USS path (starts with `/`) |
-| `localPath` | string | yes |
-| `encoding` | string | no |
-| `binary` | boolean | no |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `ussPath` | string | yes | Absolute USS path. |
+| `localPath` | string | yes | Local path. |
+| `encoding` | string | no | Codepage. |
+| `binary` | boolean | no | Binary transfer. |
+
+:::caution Tag the file after a USS upload
+The upload writes bytes but sets no tag: follow with `action: chtag` to declare the encoding, or the LPAR's Unix tools will read the file with the system default. See the "Full USS deployment" recipe.
+:::
 
 ### `mkdir`
 
 | Field | Type | Required | Default |
 |-------|------|----------|---------|
 | `ussPath` | string | yes | — |
-| `recursive` | boolean | no | `true` |
+| `recursive` | boolean | no | `true` (`mkdir -p`) |
 | `mode` | string | no | `0755` |
 
+Idempotent: an already-existing directory is a success.
+
 ### `delete` (USS)
+
+| Field | Type | Required | Default |
+|-------|------|----------|---------|
+| `ussPath` | string | yes | — |
+| `recursive` | boolean | no | `false` — a non-empty directory fails with an explicit message |
+
+### `list` (USS)
 
 | Field | Type | Required | Default |
 |-------|------|----------|---------|
@@ -116,130 +180,354 @@ Operations on z/OS MVS datasets (sequential and partitioned PDS/PDSE) **and USS 
 
 ### `exists` (USS)
 
-| Field | Type | Required |
-|-------|------|----------|
-| `ussPath` | string | yes |
+Returns `exists` (bool) and `type` (`file`, `dir`, `symlink`).
 
 ### `chmod`
 
-| Field | Type | Required | Default |
-|-------|------|----------|---------|
-| `ussPath` | string | yes | — |
-| `mode` | string | yes | — — `0755`, `u+x`… |
-| `recursive` | boolean | no | `false` |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `ussPath` | string | yes | Target. |
+| `mode` | string | yes | `0755`, `u+x`, … |
+| `recursive` | boolean | no | Default `false`. |
+
+### `chtag` — declare a file's encoding
+
+The **tag** is what tells USS how to interpret a file's bytes. The codeset is **your statement, never guessed**.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `ussPath` | string | yes | — | Target. |
+| `tagType` | string | no | `text` | `text`, `binary`, `mixed`. |
+| `codeset` | string | required for `text`/`mixed` | — | `IBM-1047`, `ISO8859-1`, `UTF-8`, … |
+| `remove` | boolean | no | `false` | `true` = untag. |
+| `recursive` | boolean | no | `false` | Apply to the whole tree. |
+
+### `chown`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `ussPath` | string | yes | Target. |
+| `owner` | string | yes | New owner. |
+| `group` | string | no | New group. |
+| `recursive` | boolean | no | Default `false`. |
+
+### `move` (USS)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `source` | string | yes | Absolute USS path. |
+| `target` | string | yes | New absolute USS path. |
+
+Server-side rename/relocation, directories included. For a dataset, use `rename`.
 
 ## Outputs
 
 | Action | Outputs |
 |--------|---------|
-| `upload` MVS | `bytesTransferred`, `membersWritten` |
+| `upload` MVS | `bytesTransferred`, `membersWritten` (dir→PDS upload) |
 | `upload` USS | `bytesTransferred` |
-| `download` | `bytesTransferred`, `localPath`; with `memberPattern` also `membersDownloaded` |
+| `download` | `bytesTransferred`, `localPath`; with `memberPattern`: `membersDownloaded` |
 | `create` | `created` (bool) |
-| `delete` | `deleted` (bool) |
-| `list` MVS | `datasets` or `members` (array), `count`. With `metadata: true`, each dataset also carries `cdate`, `rdate`, `edate`, `dsntp`, `used`, `extents`, `size`, `spaceUnits`. MVS keeps no modification date at dataset level — `rdate` (last *referenced*) is the closest signal; the real modification date only exists for PDS members (`membersOf` → `modDate`). |
-| `list` USS | `entries` (array), `count` |
-| `exists` MVS | `exists` (bool), `datasetType` |
+| `delete` / `deleteMigrated` | `deleted` (bool) (+ `waited` for deleteMigrated) |
+| `list` MVS | `datasets` or `members` (array), `count`; with `metadata: true`: `cdate`, `rdate`, `edate`, `dsntp`, `used`, `extents`, `size`, `spaceUnits` |
+| `list` USS | `entries` (array of `{ name, path, size, isDir, mode }`), `count` |
+| `exists` MVS | `exists` (bool), `datasetType` (`seq`, `pds`, `member`) |
 | `exists` USS | `exists` (bool), `type` (`file`, `dir`, `symlink`) |
+| `copy`, `rename`, `chmod`, `chtag`, `chown` | `success` (bool) |
+| `migrate`, `recall` | `success` (bool), `waited` (bool) |
 | `mkdir` | `created` (bool), `ussPath` |
-| `chmod` | `success` (bool) |
+| `move` | `success` (bool), `ussPath` (new path) |
 
 ## Typed errors
 
 | Error | Description |
 |-------|-------------|
-| `ErrInvalidDatasetName` | Dataset/member name violating MVS rules. |
-| `ErrDatasetNotFound` | Dataset or member not found. |
-| `ErrDatasetExists` | `create` on an already-existing dataset. |
-| `ErrMemberNotFound` | PDS member not found. |
-| `ErrMemberNameCollision` | Two local files produce the same member name. |
-| `ErrTransferFailed` | Upload or download failure. |
+| `ErrInvalidDatasetName` | Name violates MVS rules (44 chars, 8-char qualifiers, non-digit first char). |
+| `ErrDatasetNotFound` | Dataset not found (download, delete, rename, HSM). |
+| `ErrDatasetExists` | `create` or `rename` onto a name already taken. |
+| `ErrMemberNotFound` | PDS member not found (member rename). |
+| `ErrMemberNameCollision` | Two local files map to the same member name. |
+| `ErrTransferFailed` | Upload/download failure (the partial file was removed). |
+| `ErrAllocationFailed` | `create` refused by z/OSMF (inconsistent attributes, space, RACF). |
 | `ErrUssPathNotFound` | USS path not found. |
-| `ErrUssPermission` | USS operation denied by RACF. |
+| `ErrUssPermission` | USS operation denied (RACF/permissions). |
 
-## Examples
+## Workflow recipes
 
-**Upload a COBOL directory to a PDS**
-
-```yaml
-- uses: zos-datasets
-  with:
-    action: upload
-    localPath: ./src/cobol
-    dataset: USER.MYAPP.SRC
-```
-
-**Download a PDS member**
+### 1. Build chain: local sources → PDS, in bulk
 
 ```yaml
-- uses: zos-datasets
-  with:
-    action: download
-    dataset: USER.MYAPP.SRC(CUSTOMER)
-    localPath: ./review/CUSTOMER.cbl
+apiVersion: automate4z/v1
+kind: Workflow
+name: push-sources
+steps:
+  - id: push
+    uses: zos-datasets
+    with:
+      action: upload
+      localPath: ./src/cobol          # directory → one member per file
+      dataset: USER.MYAPP.SRC
+      lpar: dev01
+
+  - run: echo "${{ steps.push.outputs.membersWritten }} members pushed"
 ```
 
-**Download all members of a PDS to a directory**
+### 2. Pull a whole PDS for review or local backup
 
 ```yaml
-- uses: zos-datasets
-  with:
-    action: download
-    dataset: USER.MYAPP.SRC
-    memberPattern: "*"       # every member; or PAY* for a subset
-    localPath: ./src/cobol
-    extension: cbl           # PAYROLL → ./src/cobol/PAYROLL.cbl
+steps:
+  - id: pull
+    uses: zos-datasets
+    with:
+      action: download
+      dataset: USER.MYAPP.SRC
+      memberPattern: "*"              # or PAY* for a subset
+      localPath: ./backup/src
+      extension: cbl                  # PAYROLL → backup/src/PAYROLL.cbl
+
+  - run: echo "${{ steps.pull.outputs.membersDownloaded }} members, ${{ steps.pull.outputs.bytesTransferred }} bytes"
 ```
 
-Members are written in alphabetical order. If a transfer fails midway, the current partial file is removed but members already downloaded stay on disk; a pattern with no match succeeds with `membersDownloaded: 0`.
-
-**Conditional PDS allocation**
+### 3. Conditional allocation — SMS, PDSE, or by model
 
 ```yaml
-- id: check-src
-  uses: zos-datasets
-  with:
-    action: exists
-    dataset: USER.MYAPP.SRC
+steps:
+  - id: check
+    uses: zos-datasets
+    with:
+      action: exists
+      dataset: USER.MYAPP.LOAD
 
-- id: create-src
-  if: ${{ steps.check-src.outputs.exists == false }}
-  uses: zos-datasets
-  with:
-    action: create
-    dataset: USER.MYAPP.SRC
-    datasetType: pds
-    recfm: FB
-    lrecl: 80
-    primary: 10
-    secondary: 5
-    dirblk: 20
+  # SMS-managed site: classes are enough, SMS places the dataset
+  - if: ${{ steps.check.outputs.exists == false }}
+    uses: zos-datasets
+    with:
+      action: create
+      dataset: USER.MYAPP.LOAD
+      datasetType: pdse               # a real LIBRARY
+      recfm: U
+      lrecl: 0
+      blksize: 32760
+      storclass: SCPROD
+      mgmtclass: MCSTD
+
+  # Variant: clone the attributes of an existing dataset
+  - uses: zos-datasets
+    with:
+      action: create
+      dataset: USER.MYAPP.SRC.V2
+      like: USER.MYAPP.SRC            # attributes inherited from the model
 ```
 
-**Deploy a script to USS**
+### 4. Atomic promotion by rename — the member "blue/green" idiom
 
 ```yaml
-- uses: zos-datasets
-  with:
-    action: mkdir
-    ussPath: /u/Z79863/deploy
-    recursive: true
-
-- uses: zos-datasets
-  with:
-    action: upload
-    ussPath: /u/Z79863/deploy/run.sh
-    localPath: src/run.sh
-
-- uses: zos-datasets
-  with:
-    action: chmod
-    ussPath: /u/Z79863/deploy/run.sh
-    mode: "0755"
+steps:
+  # The new module was already uploaded under a candidate name
+  - uses: zos-datasets
+    with:
+      action: rename
+      source: USER.PROD.LOAD(NEWMAIN)
+      target: USER.PROD.LOAD(MAIN)    # fails if MAIN exists: delete it first,
+                                      # or rename MAIN away to keep a rollback
 ```
 
-## Common errors
+```yaml
+  # Rotation with a rollback path:
+  - uses: zos-datasets
+    with: { action: rename, source: "USER.PROD.LOAD(MAIN)", target: "USER.PROD.LOAD(MAINPREV)" }
+  - uses: zos-datasets
+    with: { action: rename, source: "USER.PROD.LOAD(NEWMAIN)", target: "USER.PROD.LOAD(MAIN)" }
+```
 
-- **Member name collision** — `customer.cbl` and `customer.jcl` both produce `CUSTOMER`. Rename one of the files locally.
-- **Corrupted encoding** — a load module uploaded without `binary: true` is mangled by EBCDIC conversion. Always `binary: true` for load modules.
-- **`ErrDatasetExists`** — `create` fails if the dataset already exists. Use `exists` first or `continueOnError`.
+### 5. HSM: recall before reading, archive after
+
+```yaml
+steps:
+  # Option A — implicit recall during the download
+  - uses: zos-datasets
+    with:
+      action: download
+      dataset: PROD.ARCHIVE.Y2024
+      localPath: ./work/archive.dat
+      migratedRecall: wait            # recalls and waits if migrated
+
+  # Option B — explicit recall (wait under your control), then process
+  - uses: zos-datasets
+    with:
+      action: recall
+      dataset: PROD.ARCHIVE.Y2024     # wait: true by default
+
+  # Archive a work dataset at the end of the chain (non-blocking)
+  - uses: zos-datasets
+    with:
+      action: migrate
+      dataset: USER.MYAPP.WORK.OUTPUT
+
+  # Purge an archived generation without recalling it
+  - uses: zos-datasets
+    with:
+      action: deleteMigrated
+      dataset: PROD.ARCHIVE.Y2019
+      purge: true
+```
+
+### 6. Dataset ↔ USS cross copies, no local transfer
+
+```yaml
+steps:
+  # A report produced by an MVS batch, to be processed with Unix tools
+  - uses: zos-datasets
+    with:
+      action: copy
+      source: PROD.BATCH.REPORT
+      target: /u/batch/reports/report.txt
+
+  # The other way: a file generated under USS, filed into a PDS
+  - uses: zos-datasets
+    with:
+      action: copy
+      source: /u/batch/out/summary.txt
+      target: USER.MYAPP.REPORTS(SUMMARY)
+      replace: true                   # overwrite the previous version
+```
+
+### 7. Back up a PDS before touching it (member wildcard)
+
+```yaml
+steps:
+  - uses: zos-datasets
+    with:
+      action: create
+      dataset: USER.MYAPP.SRC.BAK
+      like: USER.MYAPP.SRC
+
+  - uses: zos-datasets
+    with:
+      action: copy
+      source: USER.MYAPP.SRC(*)       # every member, server-side
+      target: USER.MYAPP.SRC.BAK
+      replace: true
+```
+
+### 8. Full USS deployment: mkdir → upload → chtag → chmod → chown
+
+```yaml
+steps:
+  - uses: zos-datasets
+    with:
+      action: mkdir
+      ussPath: /u/deploy/myapp/bin    # recursive: true by default (mkdir -p)
+
+  - uses: zos-datasets
+    with:
+      action: upload
+      ussPath: /u/deploy/myapp/bin/run.sh
+      localPath: scripts/run.sh
+
+  - uses: zos-datasets
+    with:
+      action: chtag                   # declare the encoding: without a tag,
+      ussPath: /u/deploy/myapp/bin/run.sh
+      tagType: text
+      codeset: IBM-1047               # the shell cannot read the script
+
+  - uses: zos-datasets
+    with:
+      action: chmod
+      ussPath: /u/deploy/myapp/bin/run.sh
+      mode: "0755"
+
+  - uses: zos-datasets
+    with:
+      action: chown
+      ussPath: /u/deploy/myapp
+      owner: batchusr
+      group: batchgrp
+      recursive: true
+```
+
+### 9. Catalog-driven housekeeping: delete old generations
+
+```yaml
+steps:
+  - id: backups
+    uses: zos-datasets
+    with:
+      action: list
+      pattern: PROD.BACKUP.*
+      metadata: true                  # cdate, size, dsntp…
+
+  # Datasets created before 2025, by creation date
+  - id: old
+    uses: json-query
+    with:
+      content: ${{ steps.backups.outputs.datasets }}
+      query: '[.[] | select(.cdate != "" and .cdate < "2025/01/01") | .name]'
+
+  - forEach: ${{ steps.old.outputs.result }}
+    as: ds
+    uses: zos-datasets
+    with:
+      action: delete
+      dataset: ${{ ds }}
+```
+
+### 10. Binary publication: load module pushed without corruption
+
+```yaml
+steps:
+  - uses: zos-datasets
+    with:
+      action: upload
+      localPath: ./dist/MYMOD.load
+      dataset: USER.PROD.LOAD(MYMOD)
+      binary: true                    # MANDATORY for a load module
+```
+
+### 11. Server-side USS reorganization
+
+```yaml
+steps:
+  - uses: zos-datasets
+    with:
+      action: move                    # rename/relocation, directories included
+      source: /u/deploy/myapp
+      target: /u/deploy/myapp-v2
+```
+
+### 12. Filtered member inventory, without listing everything
+
+```yaml
+steps:
+  - id: pay-members
+    uses: zos-datasets
+    with:
+      action: list
+      membersOf: USER.MYAPP.SRC
+      pattern: PAY*                   # filtered by z/OSMF
+
+  - run: echo "${{ steps.pay-members.outputs.count }} payroll modules"
+```
+
+## Common mistakes
+
+- **Member name collisions** — `customer.cbl` and `customer.jcl` both map to `CUSTOMER`. Rename locally; the collision is detected before any transfer.
+- **Corrupted encoding** — a binary uploaded without `binary: true` is mangled by the EBCDIC conversion. Load modules, tar, zip: always `binary: true`.
+- **Unreadable USS file after upload** — the tag is missing. Follow with `chtag` and the right `codeset`.
+- **Download failing on a migrated dataset** — add `migratedRecall: wait` or a `recall` action upstream.
+- **Member `copy` failing** — the target exists and `replace` is not set. Intentional: overwriting is an explicit choice.
+- **`ErrDatasetExists` on `create`** — guard with `exists` + `if:`, or accept with `continueOnError`.
+- **403 (`ErrUssPermission`/`ErrZosmfForbidden`)** — the RACF profile does not cover the resource; it is not an authentication problem.
+
+## FAQ
+
+**Why doesn't `upload` auto-allocate?** Because allocating means choices (recfm, lrecl, SMS) the task refuses to guess. The `exists` + `if:` + `create` idiom makes the intent explicit and the workflow replayable.
+
+**`pds` or `pdse`?** `pdse` (LIBRARY): no compress needed, more members, the modern choice. `pds` remains for legacy chains that require it.
+
+**How do I list all of a user's datasets?** `action: list` with `pattern: USER.*` (or `USER.**` depending on depth).
+
+**Are transfers retried on network errors?** Transient errors are retried before the body starts flowing; once a transfer is underway, a failure is final (the partial file is removed) — re-running the step is safe.
+
+**Where do credentials go?** Nowhere in the workflow. The LPAR profile references the native keyring or environment variables; the session is opened once per run.
