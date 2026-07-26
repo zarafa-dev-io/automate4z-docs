@@ -3,197 +3,301 @@ sidebar_position: 14
 title: zos-jobs
 ---
 
-# `zos-jobs` — JCL jobs via z/OSMF
+# `zos-jobs` — JES jobs via z/OSMF
 
-Submits a JCL job to a z/OS LPAR via z/OSMF, waits for completion, retrieves SYSOUT. This is the central task of a mainframe build pipeline.
+Full lifecycle of **z/OS batch jobs**: submission (inline, local file, dataset), wait and return-code gate, JES control (cancel, purge, hold/release, class change), spool (listing, reading, per-directory download), retrieval of the JCL that actually ran.
 
 ```yaml
 - uses: zos-jobs
   with:
     action: submit
-    jcl: src/compile.jcl
+    jcl: ./jcl/compile.jcl
     expectRC: 4
-    timeout: 10m
+    lpar: dev01
 ```
+
+## The task in 60 seconds
+
+- **Eleven actions**: `submit`, `status`, `cancel`, `purge`, `hold`, `release`, `changeClass`, `list`, `output`, `files`, `jcl`.
+- **`submit` does the everyday work**: it submits, waits for completion (`wait: true` by default), reads the return code, and **fails the step** when the RC exceeds `expectRC` — an abend or a JCL error always fails (unless `expectRC: "*"`). The workflow has nothing to parse.
+- **The session is managed for you**: opened once per run and per LPAR (the `lpar:` profile) — no credential in the YAML, no RACF revalidation on every poll.
+- **Ctrl+C never kills the job**: a launched batch is an independent transaction; polling stops, the `jobId` stays in the outputs for a manual `cancel`/`purge`. A **timeout** keeps the outputs too.
+- **Two complementary JCL parameterization mechanisms**: `vars` (a `<< >>` template applied **client-side** before submission — inline and local file only) and `jclSymbols` (`&NAME` symbols substituted **by JES2 server-side** — the only option for dataset-resident JCL).
+
+## Understanding the JES lifecycle (before your first workflow)
+
+A submitted job goes through three states: **INPUT** (queued), **ACTIVE** (executing), **OUTPUT** (finished, output on the spool). The `retcode` only exists in OUTPUT: `CC 0000` (success), `CC 0004` (warning), `CC 0008+` (error), `ABEND Sxxx/Uxxx`, `JCL ERROR`. The SYSOUT stays on the **spool** until purged — that's the difference between `cancel` (stops, output kept) and `purge` (stops **and** destroys the output).
 
 ## Common inputs
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `action` | string | yes | — | `submit`, `status`, `cancel`, `list`, `output`, `files`. |
-| `lpar` | string | no | active profile | Target LPAR profile. |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | string | yes | `submit`, `status`, `cancel`, `purge`, `hold`, `release`, `changeClass`, `list`, `output`, `files`, `jcl`. |
+| `lpar` | string | no | Target LPAR profile (default: active profile). |
 
-### Action `submit`
+## Actions
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `jcl` | string | yes | — | `.jcl` file path, inline JCL, or `//USER.JCL(MBR)` (z/OS dataset). |
-| `vars` | object | no | — | `<< >>` substitution in the JCL (client-side). |
-| `wait` | boolean | no | `true` | Wait for job completion. `false` = fire-and-forget. |
-| `expectRC` | integer or `"*"` | no | `0` | Max acceptable RC. `4` accepts 0 and 4. `"*"` accepts anything. |
-| `timeout` | duration | no | `30m` | Max wait duration. |
-| `pollInterval` | duration | no | `5s` | Status polling frequency. |
-| `fetchOutput` | boolean | no | `false` | Retrieve SYSOUT at the end. |
-| `outputDdName` | string | no | — | Specific DD to retrieve (otherwise full SYSOUT). |
-
-**JCL source detection:**
-- Starts with `//` without a space → z/OS dataset reference (submitted server-side)
-- Contains newlines → inline JCL
-- Otherwise → local file path
-
-### Actions `status` / `cancel`
-
-| Field | Type | Required |
-|-------|------|----------|
-| `jobId` | string | yes — e.g. `JOB12345` |
-| `jobName` | string | no — disambiguation |
-
-### Action `list`
-
-| Field | Type | Required | Default |
-|-------|------|----------|---------|
-| `owner` | string | no | `*` |
-| `prefix` | string | no | `*` |
-| `maxJobs` | integer | no | `100` |
-
-### Action `output`
-
-Retrieves the SYSOUT of an already-completed job.
+### `submit` — submit and (by default) wait
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `jobId` | string | yes | — | Job ID. |
-| `ddName` | string | no | — | Specific DD (`SYSPRINT`, `SYSOUT`…). Absent = full concatenated SYSOUT. |
-| `localPath` | string | no | — | Write output to this local file. |
-| `encoding` | string | no | — | Read encoding (e.g. `IBM-1047`). |
-| `maxBytes` | integer | no | `52428800` (50 MB) | Read limit. |
+| `jcl` | string | yes | — | Local `.jcl` file, inline JCL (multiline), or `//USER.JCL(MBR)` (dataset, submitted server-side). |
+| `vars` | object | no | — | Go `<< >>` template applied **client-side** — never on dataset JCL. Mind columns 1-72. |
+| `jclSymbols` | object | no | — | **JES2 symbols** (`&NAME`), substituted **server-side** — the only way to parameterize dataset-resident JCL. Names 1-8 chars, upcased. JES2 only. |
+| `wait` | boolean | no | `true` | Wait for completion. `false` = fire-and-forget (take the `jobId` and follow with `status`). |
+| `waitFor` | string | no | `output` | `active` = return as soon as the job starts (rc not evaluated). |
+| `expectRC` | integer / `"*"` | no | `0` | Max acceptable RC. `"*"` accepts everything, abends included. An unrecognized retcode **fails** (never mistaken for success). |
+| `timeout` / `pollInterval` | duration | no | `30m` / `5s` | Polling bounds. On timeout: `ErrJobTimeout` **with** the outputs (`jobId`…). |
+| `fetchOutput` | boolean | no | `false` | Fetches the SYSOUT into the `sysout` output after a successful wait. |
+| `outputDdName` / `maxBytes` / `encoding` | — | no | all / 50 MB / site default | Scope, cap and charset of `fetchOutput`. |
+| `intrdrClass` / `intrdrRecfm` / `intrdrLrecl` | — | no | JES defaults | Internal reader settings (1-char class, `F`\|`V`, LRECL). |
 
-### Action `files`
+### `status`
 
-Lists available spool files (DDs) for a completed job.
+`jobId` (required), `jobName`. Outputs: `jobStatus`, **`phase`** (the diagnostic for a hung job: "actively executing", "on the hard copy queue"…), `rc`, `completed`.
 
-| Field | Type | Required |
-|-------|------|----------|
-| `jobId` | string | yes |
+### `cancel` / `purge`
+
+`jobId` (required), `jobName`. **`cancel`** stops the job, the output stays on the spool. **`purge`** stops **and destroys the output** (synchronous DELETE) — destructive, hence a separate action by design.
+
+### `hold` / `release` — the JES approval gate
+
+`jobId` (required), `jobName`. Hold a queued job, release it after approval. Synchronous, typed 404.
+
+### `changeClass`
+
+`jobId` (required), `class` (1 character). Moves a queued job to another execution class (priority, initiators).
+
+### `list`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `owner` / `prefix` | string | `*` | Server-side filters. |
+| `jobId` | string | — | Exact job ID filter. |
+| `status` | string | — | Server-side status filter (`ACTIVE`…). |
+| `execData` | boolean | `false` | Each entry adds `phase`, `system`, `execStarted`, `execEnded`. |
+| `maxJobs` | integer | `100` | Limit. |
+
+### `output` — read or download the spool
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `jobId` | string | required | The job must be in `OUTPUT` (else `ErrJobNotComplete`). |
+| `ddName` | string | all | One DD (first match, case-insensitive). Absent = concatenation with `// DDNAME: <dd>` headers. |
+| `fileId` | integer | — | One spool file by **id** (see `files`) — resolves same-named DD ambiguity. Wins over `ddName`. |
+| `localPath` | string | — | Write to a file instead of returning inline. |
+| `localDir` | string | — | **One file per DD** (`NNN-STEP-DDNAME`, deterministic order). Exclusive with the three above. |
+| `encoding` | string | site default | Spool conversion charset (`IBM-1047`…). |
+| `maxBytes` | integer | 50 MB | Cap (cumulative when concatenating, per-file otherwise). |
+
+### `files`
+
+Lists the spool files: `{id, ddName, stepName, procStep, recordCount, byteCount}` + `count`. The `id` feeds `output.fileId`.
+
+### `jcl` — the audit trail
+
+Retrieves the **JCL that was actually submitted** (JES2 symbol substitution included): what really ran, not what you think you submitted. A natural companion for an `evidence-collect` package.
 
 ## Outputs
 
 | Action | Outputs |
 |--------|---------|
-| `submit` | `jobId`, `jobName`, `jobStatus`, `rc`, `completed` |
-| `status` | `jobId`, `jobName`, `jobStatus`, `rc`, `completed` |
-| `cancel` | `cancelled` (bool), `jobId` |
-| `list` | `jobs` (array), `count` |
-| `output` | `content` (string), `bytesRead`, `localPath` |
-| `files` | `files` (array of `{ ddName, stepName, recordCount, byteCount }`), `count` |
+| `submit` | `jobId`, `jobName`, `jobStatus`, `rc` (null if not finished/abend), `completed`; `sysout` with `fetchOutput` |
+| `status` | `jobId`, `jobName`, `jobStatus`, `phase`, `rc`, `completed` |
+| `cancel` / `purge` | `cancelled` / `purged` (bool), `jobId` |
+| `hold` / `release` | `success`, `jobId` |
+| `changeClass` | `success`, `jobId`, `class` |
+| `list` | `jobs` (+ `phase`/`system`/`execStarted`/`execEnded` with `execData`), `count` |
+| `output` | `content` or `localPath`, `bytesRead`; with `localDir`: `localDir`, `filesWritten`, `bytesRead` |
+| `files` | `files` (with `id`), `count` |
+| `jcl` | `jcl` (string), `jobId` |
 
-## RC semantics
+## RC semantics — what fails the step
 
-| z/OSMF `retcode` | Interpretation |
-|-----------------|----------------|
-| `CC 0000` | RC 0 — success |
-| `CC 0004` | RC 4 — acceptable warning |
-| `CC 0008` | RC 8 — error |
-| `ABEND S0C7` | System abend → `ErrJobAbend` |
-| `JCL ERROR` | JCL error → `ErrJclError` |
-
-Abends and JCL errors are **always failures**, except `expectRC: "*"` which accepts anything.
+| `retcode` | With `expectRC: 4` | With `expectRC: "*"` |
+|---|---|---|
+| `CC 0000`, `CC 0004` | ✅ success | ✅ |
+| `CC 0008` | ❌ `ErrRCExceeded` | ✅ |
+| `ABEND S0C7` | ❌ `ErrJobAbend` | ✅ |
+| `JCL ERROR` | ❌ `ErrJclError` | ✅ |
+| Unrecognized (`SEC ERROR`…) | ❌ `ErrRCUnknown` — never mistaken for success | ✅ |
 
 ## Typed errors
 
-| Error | Description |
-|-------|-------------|
-| `ErrJclSubmitFailed` | Submission failed. |
-| `ErrJclError` | z/OS detected a JCL error. |
-| `ErrJobAbend` | Job ended in abend. |
-| `ErrJobTimeout` | `timeout` exceeded before job completion. |
-| `ErrRCExceeded` | RC exceeds `expectRC`. |
-| `ErrJobNotFound` | `jobId` not found. |
+`ErrJclSubmitFailed`, `ErrJclError`, `ErrJobAbend`, `ErrJobTimeout` (outputs kept), `ErrRCExceeded`, `ErrRCUnknown`, `ErrJobNotFound` (typed 404 on every action), `ErrJobNotComplete`, `ErrDdNotFound`, `ErrOutputTooLarge`.
 
-## Examples
+## Workflow recipes
 
-**Compilation with variable substitution**
+### 1. Compile with an RC gate and listing retrieval
 
 ```yaml
-- id: compile
-  uses: zos-jobs
-  with:
-    action: submit
-    jcl: ./jcl/compile.jcl
-    vars:
-      MODULE: ${{ inputs.module }}
-      LOADLIB: USER.LOAD
-    expectRC: 4
-    timeout: 15m
+steps:
+  - id: compile
+    uses: zos-jobs
+    with:
+      action: submit
+      jcl: ./jcl/compile.jcl
+      vars: { module: PAYROLL }      # client-side << >> template
+      expectRC: 4                    # RC 0 and 4 accepted, 8+ fails
+      fetchOutput: true
+      outputDdName: SYSPRINT
+
+  - run: echo "RC=${{ steps.compile.outputs.rc }}"
 ```
 
-**Inline JCL**
+### 2. Dataset-resident JCL, parameterized through JES2 symbols
 
 ```yaml
-- uses: zos-jobs
-  with:
-    action: submit
-    jcl: |
-      //<<.Hlq>>CPL JOB CLASS=A
-      //STEP EXEC PGM=IGYCRCTL
-      //SYSIN DD DSN=<<.Hlq>>.COBOL.SRC(<<.Pgm>>),DISP=SHR
-    vars:
-      Hlq: "Z79863"
-      Pgm: "CUSTOMER"
-    expectRC: 4
+steps:
+  - uses: zos-jobs
+    with:
+      action: submit
+      jcl: //PROD.JCL(NIGHTLY)       # the JCL never leaves the mainframe
+      jclSymbols:                    # &ENV / &DATE substituted by JES2
+        ENV: PROD
+        DATE: "20260726"
 ```
 
-**Retrieve and analyze SYSPRINT**
+### 3. Fire-and-forget, then follow up
 
 ```yaml
-- id: compile
-  uses: zos-jobs
-  with:
-    action: submit
-    jcl: ./jcl/compile.jcl
-    fetchOutput: true
-    outputDdName: SYSPRINT
-    expectRC: 4
+steps:
+  - id: launch
+    uses: zos-jobs
+    with: { action: submit, jcl: ./jcl/long-batch.jcl, wait: false }
 
-- id: check-listing
-  uses: shell
-  with:
-    run: |
-      if echo "${{ steps.compile.outputs.sysout }}" | grep -q "IGYPA3020-I"; then
-        echo "Warning IGYPA3020-I detected"
-      fi
+  # ... other steps ...
+
+  - id: check
+    uses: zos-jobs
+    with:
+      action: status
+      jobId: ${{ steps.launch.outputs.jobId }}
+
+  - run: echo "phase = ${{ steps.check.outputs.phase }}"
 ```
 
-**Fire-and-forget then manual wait**
+### 4. Approval gate: hold → approve → release
 
 ```yaml
-- id: submit-long
-  uses: zos-jobs
-  with:
-    action: submit
-    jcl: ./jcl/long-batch.jcl
-    wait: false
+steps:
+  - id: stage
+    uses: zos-jobs
+    with: { action: submit, jcl: "//PROD.JCL(DEPLOY)", wait: false }
 
-# ... other parallel steps ...
+  - uses: zos-jobs
+    with: { action: hold, jobId: "${{ steps.stage.outputs.jobId }}" }
 
-- id: wait-result
-  uses: zos-jobs
-  with:
-    action: status
-    jobId: "${{ steps.submit-long.outputs.jobId }}"
+  # human or automated gate (e.g. an approved jira transition)…
+
+  - uses: zos-jobs
+    with: { action: release, jobId: "${{ steps.stage.outputs.jobId }}" }
 ```
 
-## Common errors
+### 5. Controlled timeout: cancel what drags on
 
-- **`JCL ERROR`** — JCL syntax error. Inspect the downloaded SYSOUT.
-- **`expectRC: 0` failing with RC=4** — many COBOL compilations return 4 on warnings. Prefer `expectRC: 4` for compilations.
-- **`&VAR.` substitution not working** — the substitution uses `<< >>` delimiters, not `&VAR.`. Check the syntax.
-- **Job stuck in queue** — `maxWait` reached. Check JOB class and initiator availability.
+```yaml
+steps:
+  - id: batch
+    uses: zos-jobs
+    continueOnError: true
+    with: { action: submit, jcl: ./jcl/batch.jcl, timeout: "20m" }
+
+  - if: ${{ steps.batch.outputs.completed == false }}
+    uses: zos-jobs
+    with:
+      action: cancel                 # the jobId survived the timeout
+      jobId: ${{ steps.batch.outputs.jobId }}
+```
+
+### 6. Archive a job's full spool, one file per DD
+
+```yaml
+steps:
+  - uses: zos-jobs
+    with:
+      action: output
+      jobId: JOB04712
+      localDir: ./evidence/spool     # 001-JESMSGLG, 002-STEP1-SYSPRINT, …
+      encoding: IBM-1047
+```
+
+### 7. Audit: capture the JCL that actually ran
+
+```yaml
+steps:
+  - id: trace
+    uses: zos-jobs
+    with: { action: jcl, jobId: JOB04712 }
+
+  - uses: fs
+    with:
+      action: write
+      path: ./evidence/JOB04712.jcl
+      content: ${{ steps.trace.outputs.jcl }}
+```
+
+### 8. Monitoring: an environment's active jobs
+
+```yaml
+steps:
+  - id: active
+    uses: zos-jobs
+    with:
+      action: list
+      owner: PRODBAT
+      status: ACTIVE                 # filtered by JES
+      execData: true                 # phase, system, start time
+
+  - uses: assert
+    with:
+      that: ${{ steps.active.outputs.count <= 10 }}
+      message: "Too many concurrent PRODBAT jobs"
+```
+
+### 9. Same-named DDs: target a precise spool file
+
+```yaml
+steps:
+  - id: dds
+    uses: zos-jobs
+    with: { action: files, jobId: JOB04712 }
+  # two steps write SYSPRINT → pick by id, not by name
+
+  - uses: zos-jobs
+    with:
+      action: output
+      jobId: JOB04712
+      fileId: 4
+```
+
+### 10. End-of-chain purge (clean spool)
+
+```yaml
+steps:
+  - id: run-batch
+    uses: zos-jobs
+    with: { action: submit, jcl: ./jcl/test-run.jcl, fetchOutput: true }
+
+  # the SYSOUT already lives in the outputs — the spool copy can go
+  - uses: zos-jobs
+    with: { action: purge, jobId: "${{ steps.run-batch.outputs.jobId }}" }
+```
+
+## Common mistakes
+
+- **`ErrJobNotComplete` on `output`** — the job is not in `OUTPUT`. Use `submit wait: true`, or check with `status` first.
+- **Timeout too short** — the first status check only happens after one `pollInterval`; a smaller `timeout` fails on the first tick.
+- **Column-72 overflow** — an oversized `vars` value breaks the JCL. `jclSymbols` (JES2 substitution) sidestep the client-side issue.
+- **`vars` having no effect on a dataset** — intentional: dataset JCL is never templated client-side. Use `jclSymbols`.
+- **Cluttered spool** — every run leaves its output behind. A `purge` at the end of the chain (after `fetchOutput`/archiving) keeps JES clean.
 
 ## FAQ
 
-**Why is substitution client-side?**
-JES symbolic parameters only work in procedures (PROCs), not in the main JCL. Consistent client-side substitution is more predictable.
+**Why does the step fail on an abend even with `expectRC: 8`?** `expectRC` bounds normal condition codes. An abend or JCL error is a different failure category; only `expectRC: "*"` accepts them.
 
-**Can I retrieve multiple DDs separately?**
-Yes. Use the `files` action to list available DDs, then `output` with `ddName` for each one.
+**How do I re-run a job?** Re-submit the same JCL (`submit` is repeatable). JES assigns a new `jobId`.
+
+**What happens to the job if the run is interrupted?** It keeps running on z/OS — a deliberate decision: a launched batch is an independent transaction. The logged/exposed `jobId` enables `cancel` or `purge`.
+
+**Can `purge` destroy audit evidence?** Yes — which is why it is a separate action. Archive first (`output localDir`, `jcl`), purge after.
